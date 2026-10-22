@@ -24,3 +24,5 @@
 2. Run `npm run erc:assets`, and copy `erc/assets/eip-XXXX/` into the ERCs repository as `assets/eip-<number>/`.
 3. Replace `XXXX` with the assigned number in the draft and the sources.
 4. Remove `author` placeholders and template comments, if any remain.
+
+The draft carries EIP-1's CC0 waiver, and [`LICENSE`](LICENSE) in this folder holds the CC0 text. The assets are MIT, as ERC-7943's own reference implementation is.

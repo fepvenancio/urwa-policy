@@ -46,4 +46,6 @@ Tooling: Hardhat 3, Solidity 0.8.30 (EVM `cancun`), OpenZeppelin Contracts 5.6.1
 
 ## Licence
 
-[CC0 1.0](LICENSE), as EIP-1 requires for an ERC and its assets.
+- **Code** (`contracts/`, `scripts/`, configuration): [MIT](LICENSE).
+- **ERC draft** (`erc/`): [CC0 1.0](erc/LICENSE), as EIP-1 requires of every ERC.
+- **The copy of ERC-7943's interface** (`contracts/interfaces/IERC7943Fungible.sol`) keeps the CC0 of the ERC it comes from.

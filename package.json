@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Reference implementation of the uRWA Policy Interface: an external compliance policy for ERC-7943 tokens",
-  "license": "CC0-1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "hardhat build",
