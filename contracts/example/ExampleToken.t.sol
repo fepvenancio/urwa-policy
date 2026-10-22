@@ -174,6 +174,31 @@ contract ExampleTokenUnitTest is Helpers {
     _token.transfer(_bob, 10);
   }
 
+  function test_WhenThePauserUnpauses_TransfersResume() public {
+    vm.startPrank(_pauser);
+    _token.pause();
+    _token.unpause();
+    vm.stopPrank();
+    assertFalse(_token.paused());
+    vm.prank(_alice);
+    assertTrue(_token.transfer(_bob, 10));
+  }
+
+  function test_WhenANonPauserPausesOrUnpauses_ItReverts() public {
+    bytes32 _pauserRole = _token.PAUSER_ROLE();
+    bytes memory _denied =
+      abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, _alice, _pauserRole);
+    vm.prank(_alice);
+    vm.expectRevert(_denied);
+    _token.pause();
+
+    vm.prank(_pauser);
+    _token.pause();
+    vm.prank(_alice);
+    vm.expectRevert(_denied);
+    _token.unpause();
+  }
+
   function test_WhenTheAmountExceedsTheUnfrozenBalance_ItRevertsWithTheERC7943Error() public {
     vm.prank(_enforcer);
     _token.setFrozenTokens(_alice, 950);
@@ -182,6 +207,17 @@ contract ExampleTokenUnitTest is Helpers {
       abi.encodeWithSelector(IERC7943Fungible.ERC7943InsufficientUnfrozenBalance.selector, _alice, 51, 50)
     );
     _token.transfer(_bob, 51);
+  }
+
+  /// @notice At the whole balance with part of it frozen, the frozen part is the reason, not the balance
+  function test_WhenTheWholeBalanceIsPartlyFrozen_ItRevertsWithTheERC7943Error() public {
+    vm.prank(_enforcer);
+    _token.setFrozenTokens(_alice, 950);
+    vm.prank(_alice);
+    vm.expectRevert(
+      abi.encodeWithSelector(IERC7943Fungible.ERC7943InsufficientUnfrozenBalance.selector, _alice, 1000, 50)
+    );
+    _token.transfer(_bob, 1000);
   }
 
   function test_WhenTheAmountExceedsTheBalance_ItRevertsWithTheERC20Error() public {
@@ -299,6 +335,15 @@ contract ExampleTokenUnitTest is Helpers {
       abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, _alice, _enforcerRole)
     );
     _token.forcedTransfer(_alice, _bob, 1);
+  }
+
+  function test_WhenANonEnforcerFreezes_ItReverts() public {
+    bytes32 _enforcerRole = _token.ENFORCER_ROLE();
+    vm.prank(_alice);
+    vm.expectRevert(
+      abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, _alice, _enforcerRole)
+    );
+    _token.setFrozenTokens(_alice, 1);
   }
 
   /// @notice Only the frozen part of what moves is unfrozen; a freeze above the balance keeps withholding
