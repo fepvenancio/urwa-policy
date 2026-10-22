@@ -24,6 +24,7 @@ import {
 } from 'contracts/test/FaultyPolicies.sol';
 import {ForcedThenTransfer} from 'contracts/test/ForcedThenTransfer.sol';
 import {Helpers} from 'contracts/test/Helpers.sol';
+import {SeedAndInstall} from 'contracts/test/SeedAndInstall.sol';
 
 /// @notice The ERC-20 Transfer event, for `vm.expectEmit`
 interface IERC20Events {
@@ -425,6 +426,52 @@ contract ERCXXXXIntegrationTest is Helpers {
     vm.prank(_actors[2]);
     _token.transfer(_actors[3], 10); // a full exit to an existing holder
     assertEq(_policy.holderCount(), 3);
+  }
+
+  /**
+   * @notice The snapshot window: governance reads the count (2), a holder arrives before the batch runs (3 now), then
+   *         a policy B with a cap of 3 is seeded and installed in one call by `_helper`
+   */
+  function _snapshotThenAHolderArrives()
+    internal
+    returns (SeedAndInstall _helper, ExamplePolicy _b, uint256 _snapshot)
+  {
+    _snapshot = _policy.holderCount(); // 2, read when the batch is prepared
+    _helper = new SeedAndInstall();
+    _b = _secondPolicy();
+    bytes32 _adminRole = _token.DEFAULT_ADMIN_ROLE(); // read before the prank, which the next call would consume
+    vm.startPrank(_admin);
+    _b.setCap(3);
+    _b.transferOwnership(address(_helper));
+    _token.grantRole(_adminRole, address(_helper));
+    vm.stopPrank();
+
+    vm.prank(_actors[0]);
+    _token.transfer(_actors[2], 10); // a new holder, before the batch executes
+    assertEq(_policy.holderCount(), 3);
+  }
+
+  /// @notice Batching a count read off-chain closes the seed-to-install gap, not the snapshot window
+  function test_WhenAHolderArrivesBeforeTheBatch_AnOffChainSeedIsStale() public {
+    (SeedAndInstall _helper, ExamplePolicy _b, uint256 _snapshot) = _snapshotThenAHolderArrives();
+    _helper.seedAndInstall(address(_token), address(_b), _snapshot);
+    assertEq(_b.holderCount(), 2); // three accounts hold the token
+
+    vm.prank(_minter);
+    _token.mint(_actors[3], 10); // admitted: 2 + 1 <= 3, yet four accounts now hold the token
+    assertEq(_b.holderCount(), 3);
+  }
+
+  /// @notice Reading the count on-chain in the installing call closes the snapshot window
+  function test_WhenAHolderArrivesBeforeTheBatch_AnOnChainReadInstallsTheTrueCount() public {
+    (SeedAndInstall _helper, ExamplePolicy _b,) = _snapshotThenAHolderArrives();
+    _helper.seedFromAndInstall(address(_token), address(_b), address(_policy));
+    assertEq(_b.holderCount(), 3);
+
+    bytes32 _maxHolders = _b.MAX_HOLDERS();
+    vm.prank(_minter);
+    vm.expectRevert(abi.encodeWithSelector(IERCXXXX.ERCXXXXPolicyRejected.selector, _maxHolders));
+    _token.mint(_actors[3], 10);
   }
 
   function test_OnceInstalled_ThePolicyCannotBeSeeded() public {
