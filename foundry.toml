@@ -1,0 +1,28 @@
+# Hardhat builds and tests this project. This file configures `forge fmt` (Wonderland formatting) and the `forge build`
+# that Slither runs; forge outputs are kept apart from Hardhat's `artifacts/` and `cache/`.
+[profile.default]
+src = 'contracts'
+libs = ['node_modules']
+out = 'forge-out'
+cache_path = 'forge-cache'
+solc_version = '0.8.30'
+evm_version = 'cancun'
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = 'none'
+# Hardhat resolves npm packages itself; forge needs forge-std's src/ mapped explicitly.
+remappings = ['forge-std/=node_modules/forge-std/src/']
+# Compiled with 0.8.20 by Hardhat only; forge would need a second compiler for one probe file.
+skip = ['contracts/test/InterfacesAt0820.sol']
+
+[fmt]
+line_length = 120
+tab_width = 2
+bracket_spacing = false
+int_types = 'long'
+quote_style = 'single'
+number_underscore = 'thousands'
+multiline_func_header = 'params_first'
+sort_imports = true
+# Copied verbatim from ERC-7943 (Final); kept byte-for-byte rather than reformatted.
+ignore = ['contracts/interfaces/IERC7943Fungible.sol']

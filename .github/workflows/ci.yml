@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  HARDHAT_DISABLE_TELEMETRY: "true"
+
+# Supply chain: actions pinned to commit SHAs; exact Node and Python; npm packages verified by lockfile integrity with
+# install scripts disabled; Slither from a --require-hashes lock (ci/requirements.txt); forge from a release asset whose
+# sha256 is pinned in tools.lock (scripts/fetch-tool.sh).
+
+jobs:
+  test:
+    name: Lint, test, ERC draft in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.21.0
+          cache: npm
+      # forge-std is a public git dependency recorded as git+ssh in the lockfile; fetch it over https.
+      - run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+      - run: npm ci --ignore-scripts
+      - run: npm run lint:sol
+      - run: npx hardhat build
+      - run: npm test
+      # Isolation mode shifts nonces: guards against fixtures that predict addresses from the deployer's nonce.
+      - run: npm run test:isolated
+      # The draft's Solidity blocks must match contracts/, and its links must follow EIP-1.
+      - run: npm run check:erc
+
+  analysis:
+    name: Format, Slither
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+      - run: npm ci --ignore-scripts
+      - run: scripts/fetch-tool.sh foundry
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: 3.12.15
+      - run: pip install --require-hashes -r ci/requirements.txt
+      - run: npm run fmt:check
+      - run: slither .

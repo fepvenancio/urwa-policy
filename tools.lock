@@ -1,0 +1,8 @@
+# Binaries fetched at run time, pinned by sha256. `scripts/fetch-tool.sh <tool>` refuses anything not listed here.
+#
+# Each hash was checked on 2026-10-17 against three sources that agreed: the downloaded file, GitHub's recorded asset
+# digest, and the project's published .sha256. Foundry additionally verified with `gh attestation verify -R
+# foundry-rs/foundry` (sigstore build provenance).
+#
+# tool    version  platform      sha256                                                            url
+foundry   1.8.1    linux-x64     37b45855232e57624d90113b049ca54f0c92055bb5c1997fcbdc3076c7b89c10  https://github.com/foundry-rs/foundry/releases/download/v1.8.1/foundry_v1.8.1_linux_amd64.tar.gz

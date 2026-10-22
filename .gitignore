@@ -1,0 +1,25 @@
+# Node modules
+/node_modules
+
+# Hardhat build artifacts and cache
+/artifacts
+/cache
+
+# Hardhat coverage reports
+/coverage
+
+# forge (fmt / Slither builds)
+/forge-out
+/forge-cache
+
+# ERC assets, assembled from contracts/ by `npm run erc:assets` when submitting
+/erc/assets
+
+# Pinned tool binaries fetched by scripts/fetch-tool.sh (see tools.lock)
+/.tools
+
+# Environment files and local tooling
+.env
+.env.*
+!.env.example
+.DS_Store
