@@ -439,7 +439,7 @@ contract ERCXXXXIntegrationTest is Helpers {
     _snapshot = _policy.holderCount(); // 2, read when the batch is prepared
     _helper = new SeedAndInstall();
     _b = _secondPolicy();
-    bytes32 _adminRole = _token.DEFAULT_ADMIN_ROLE(); // read before the prank, which the next call would consume
+    bytes32 _adminRole = _token.DEFAULT_ADMIN_ROLE();
     vm.startPrank(_admin);
     _b.setCap(3);
     _b.transferOwnership(address(_helper));
@@ -519,7 +519,7 @@ contract ERCXXXXIntegrationTest is Helpers {
   /// @notice While paused, a forced transfer goes through, but an ordinary transfer right after it, in the same call, does not
   function test_AForcedTransferDoesNotLeakItsKindToTheNextMovement() public {
     ForcedThenTransfer _helper = new ForcedThenTransfer();
-    bytes32 _enforcerRole = _token.ENFORCER_ROLE(); // read before the prank, which the next call would consume
+    bytes32 _enforcerRole = _token.ENFORCER_ROLE();
     vm.startPrank(_admin);
     _token.grantRole(_enforcerRole, address(_helper));
     _policy.setAllowlisted(address(_helper), true);
