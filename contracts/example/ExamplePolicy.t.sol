@@ -5,6 +5,7 @@ import {Ownable} from '@openzeppelin/contracts/access/Ownable.sol';
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {IERC165} from '@openzeppelin/contracts/utils/introspection/IERC165.sol';
 
+import {IERCXXXX} from 'interfaces/IERCXXXX.sol';
 import {IERCXXXXPolicy, TRANSFER_OK} from 'interfaces/IERCXXXXPolicy.sol';
 import {IExamplePolicy} from 'interfaces/IExamplePolicy.sol';
 
@@ -123,6 +124,47 @@ contract ExamplePolicyUnitTest is Helpers {
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _stranger));
     _policy.setCap(1);
     vm.stopPrank();
+  }
+
+  /*///////////////////////////////////////////////////////////////
+                            SEEDING THE HOLDER COUNT
+  //////////////////////////////////////////////////////////////*/
+
+  function _installed(
+    bool _isInstalled
+  ) internal {
+    address _current = _isInstalled ? address(_policy) : _stranger;
+    vm.mockCall(_token, abi.encodeCall(IERCXXXX.policy, ()), abi.encode(_current));
+  }
+
+  function test_WhenTheOwnerSeedsBeforeInstallation_ItSetsTheCountAndEmits() public {
+    _installed(false);
+    vm.expectEmit(address(_policy));
+    emit IExamplePolicy.HolderCountSeeded(0, 5);
+    vm.prank(_owner);
+    _policy.seedHolderCount(5);
+    assertEq(_policy.holderCount(), 5);
+  }
+
+  function test_WhenTheTokenDoesNotExistYet_SeedingIsAllowed() public {
+    ExamplePolicy _early = new ExamplePolicy(makeAddr('future token'), _owner, 10);
+    vm.prank(_owner);
+    _early.seedHolderCount(3);
+    assertEq(_early.holderCount(), 3);
+  }
+
+  function test_WhenTheTokenHasInstalledThePolicy_SeedingReverts() public {
+    _installed(true);
+    vm.prank(_owner);
+    vm.expectRevert(IExamplePolicy.ExamplePolicy_AlreadyInstalled.selector);
+    _policy.seedHolderCount(5);
+  }
+
+  function test_WhenANonOwnerSeeds_ItReverts() public {
+    _installed(false);
+    vm.prank(_stranger);
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _stranger));
+    _policy.seedHolderCount(5);
   }
 
   /*///////////////////////////////////////////////////////////////

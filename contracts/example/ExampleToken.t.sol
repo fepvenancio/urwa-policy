@@ -343,6 +343,11 @@ contract ExampleTokenUnitTest is Helpers {
     assertFalse(_token.canTransfer(_alice, _bob, 10));
   }
 
+  function test_CanTransfer_WhenTheAnswerIsEmpty_ItReturnsFalse() public {
+    vm.mockCall(_policy, abi.encodeWithSelector(IERCXXXXPolicy.checkTransfer.selector), '');
+    assertFalse(_token.canTransfer(_alice, _bob, 10));
+  }
+
   function test_CanSendAndCanReceive_ForwardThePolicysAnswer() public {
     // Each check is asked twice below: once permitting, once rejecting.
     vm.expectCall(_policy, abi.encodeCall(IERCXXXXPolicy.checkSend, (address(_token), _alice)), 2);

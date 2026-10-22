@@ -6,6 +6,7 @@ import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {ERC165} from '@openzeppelin/contracts/utils/introspection/ERC165.sol';
 import {IERC165} from '@openzeppelin/contracts/utils/introspection/IERC165.sol';
 
+import {IERCXXXX} from 'interfaces/IERCXXXX.sol';
 import {IERCXXXXPolicy, TRANSFER_OK} from 'interfaces/IERCXXXXPolicy.sol';
 import {IExamplePolicy} from 'interfaces/IExamplePolicy.sol';
 
@@ -54,6 +55,16 @@ contract ExamplePolicy is ERC165, Ownable, IExamplePolicy {
   /*///////////////////////////////////////////////////////////////
                             ADMIN
   //////////////////////////////////////////////////////////////*/
+
+  /// @inheritdoc IExamplePolicy
+  function seedHolderCount(
+    uint256 _count
+  ) external onlyOwner {
+    // Before the token exists, or while it consults another policy. Once installed, `afterTransfer` keeps the count.
+    if (TOKEN.code.length != 0 && IERCXXXX(TOKEN).policy() == address(this)) revert ExamplePolicy_AlreadyInstalled();
+    emit HolderCountSeeded(holderCount, _count);
+    holderCount = _count;
+  }
 
   /// @inheritdoc IExamplePolicy
   function setAllowlisted(

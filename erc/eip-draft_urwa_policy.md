@@ -602,8 +602,11 @@ function _permits(
   if (_activePolicy.code.length == 0) return false;
   bytes32 _ok = TRANSFER_OK;
   assembly ('memory-safe') {
-    let _success := staticcall(gas(), _activePolicy, add(_payload, 0x20), mload(_payload), 0x00, 0x20)
-    _permitted := and(_success, and(gt(returndatasize(), 0x1f), eq(mload(0x00), _ok)))
+    let _success := staticcall(gas(), _activePolicy, add(_payload, 0x20), mload(_payload), 0x00, 0x00)
+    if and(_success, gt(returndatasize(), 0x1f)) {
+      returndatacopy(0x00, 0x00, 0x20)
+      _permitted := eq(mload(0x00), _ok)
+    }
   }
 }
 ```
@@ -656,7 +659,7 @@ An escrow that must check the entitled account, for example before paying out a 
 
 `afterTransfer` is an external call made in the middle of a token operation. The token's guard stops it from starting another movement. Because it runs before any recipient hook, a recipient cannot act on policy state that does not yet include the movement.
 
-A stateful policy that is installed on a token which already has holders must be initialised to the token's current state, and so must a policy whose `wantsAfterTransfer` changes to `true`. This ERC does not standardise how. The reference policy requires a token with no holders.
+A stateful policy that is installed on a token which already has holders must be initialised to the token's current state, and so must a policy whose `wantsAfterTransfer` changes to `true`. This ERC does not standardise how. The reference policy lets its owner seed the count before it is installed.
 
 ### Balance changes that are not movements
 

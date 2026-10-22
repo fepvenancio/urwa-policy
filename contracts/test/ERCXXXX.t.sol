@@ -3,10 +3,12 @@ pragma solidity ^0.8.28;
 
 import {IERC20Errors} from '@openzeppelin/contracts/interfaces/draft-IERC6093.sol';
 import {ReentrancyGuardTransient} from '@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol';
+import {stdError} from 'forge-std/StdError.sol';
 
 import {IERC7943Fungible} from 'interfaces/IERC7943Fungible.sol';
 import {IERCXXXX} from 'interfaces/IERCXXXX.sol';
 import {IERCXXXXPolicy, TRANSFER_OK} from 'interfaces/IERCXXXXPolicy.sol';
+import {IExamplePolicy} from 'interfaces/IExamplePolicy.sol';
 
 import {ExamplePolicy} from 'contracts/example/ExamplePolicy.sol';
 import {ExampleToken} from 'contracts/example/ExampleToken.sol';
@@ -334,6 +336,46 @@ contract ERCXXXXIntegrationTest is Helpers {
     assertFalse(_token.canTransfer(_actors[0], _actors[2], 1000)); // net zero, but the count is above the cap
     assertTrue(_token.canTransfer(_actors[0], _actors[1], 1)); // existing holders still transact
     assertTrue(_token.canTransfer(_actors[0], address(0), 1000)); // and can exit
+  }
+
+  /*///////////////////////////////////////////////////////////////
+                            REPLACING THE POLICY ON A LIVE TOKEN
+  //////////////////////////////////////////////////////////////*/
+
+  /// @notice A second example policy for the same token, allowlisting every actor
+  function _secondPolicy() internal returns (ExamplePolicy _second) {
+    _second = new ExamplePolicy(address(_token), _admin, 10);
+    vm.startPrank(_admin);
+    for (uint256 _i; _i < _actors.length; ++_i) {
+      _second.setAllowlisted(_actors[_i], true);
+    }
+    vm.stopPrank();
+  }
+
+  function test_AReplacementSeededWithTheTrueCountLetsAHolderExit() public {
+    ExamplePolicy _second = _secondPolicy();
+    uint256 _trueCount = _policy.holderCount(); // 2: actors[0] and actors[1]; read before the prank
+    vm.prank(_admin);
+    _second.seedHolderCount(_trueCount);
+    _install(address(_second));
+
+    vm.prank(_actors[0]);
+    _token.transfer(_actors[1], 1000); // a full exit to an existing holder
+    assertEq(_second.holderCount(), 1);
+  }
+
+  /// @notice Why the seed exists: an unseeded replacement starts at zero and underflows on the first full exit
+  function test_AnUnseededReplacementBlocksAFullExit() public {
+    _install(address(_secondPolicy()));
+    vm.prank(_actors[0]);
+    vm.expectRevert(stdError.arithmeticError);
+    _token.transfer(_actors[1], 1000);
+  }
+
+  function test_OnceInstalled_ThePolicyCannotBeSeeded() public {
+    vm.prank(_admin);
+    vm.expectRevert(IExamplePolicy.ExamplePolicy_AlreadyInstalled.selector);
+    _policy.seedHolderCount(5);
   }
 
   /*///////////////////////////////////////////////////////////////

@@ -6,8 +6,9 @@ import {IERCXXXXPolicy} from 'interfaces/IERCXXXXPolicy.sol';
 /**
  * @title IExamplePolicy
  * @notice Example ERC-XXXX policy for one ERC-20 token: an allowlist and a holder cap
- * @dev Non-normative and not audited. Holders are accounts with a non-zero balance; the count starts at zero, so the
- *      policy must be installed before the token has holders. A cap of zero admits no holder
+ * @dev Non-normative and not audited. Holders are accounts with a non-zero balance. The count starts at zero; for a
+ *      token that already has holders, the owner seeds it with `seedHolderCount` before installation. A cap of zero
+ *      admits no holder
  */
 interface IExamplePolicy is IERCXXXXPolicy {
   /*///////////////////////////////////////////////////////////////
@@ -27,9 +28,19 @@ interface IExamplePolicy is IERCXXXXPolicy {
    */
   event CapSet(uint256 _cap);
 
+  /**
+   * @notice Emitted when the owner seeds the holder count before the policy is installed
+   * @param _oldCount The count before
+   * @param _newCount The seeded count
+   */
+  event HolderCountSeeded(uint256 _oldCount, uint256 _newCount);
+
   /*///////////////////////////////////////////////////////////////
                             ERRORS
   //////////////////////////////////////////////////////////////*/
+
+  /// @notice Thrown when the holder count is seeded after the token has installed this policy
+  error ExamplePolicy_AlreadyInstalled();
 
   /**
    * @notice Thrown when `afterTransfer` is called by anyone but the token, or for another token
@@ -43,6 +54,16 @@ interface IExamplePolicy is IERCXXXXPolicy {
   /*///////////////////////////////////////////////////////////////
                             LOGIC
   //////////////////////////////////////////////////////////////*/
+
+  /**
+   * @notice Sets the holder count to the token's current number of holders, before the token installs this policy
+   * @dev Only the owner, and only while `TOKEN` does not consult this policy. Once installed, the count follows real
+   *      movements through `afterTransfer`
+   * @param _count The number of accounts holding a non-zero balance
+   */
+  function seedHolderCount(
+    uint256 _count
+  ) external;
 
   /**
    * @notice Adds an account to or removes it from the allowlist
