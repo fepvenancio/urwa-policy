@@ -142,7 +142,8 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
   /**
    * @inheritdoc IERC7943Fungible
    * @dev Evaluates exactly what `_update` evaluates for the TRANSFER, MINT or BURN its arguments describe, without
-   *      reverting. The operator is `_from`, or the caller for a mint; those kinds cannot depend on it
+   *      reverting. The operator is `_from`, zero for a mint, so the context depends only on the arguments; these
+   *      kinds' decisions cannot depend on it
    */
   function canTransfer(
     address _from,
@@ -152,8 +153,7 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
     if (_from == address(0) && _to == address(0)) return false;
     IERCXXXXPolicy.TransferKind _kind = _inferKind(_from, _to);
     if (_tokenCheck(_from, _amount, _kind) != TRANSFER_OK) return false;
-    address _operator = _from == address(0) ? _msgSender() : _from;
-    _allowed = _permits(abi.encodeCall(IERCXXXXPolicy.checkTransfer, (_context(_from, _to, _amount, _operator, _kind))));
+    _allowed = _permits(abi.encodeCall(IERCXXXXPolicy.checkTransfer, (_context(_from, _to, _amount, _from, _kind))));
   }
 
   /// @inheritdoc IERC7943Fungible

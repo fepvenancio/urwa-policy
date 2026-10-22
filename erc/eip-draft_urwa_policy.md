@@ -298,7 +298,7 @@ The set of kinds is closed. The encodings are `TRANSFER = 0`, `EXECUTED = 1`, `F
      - `from`, `to`: the arguments;
      - `tokenId`: the `tokenId` argument, or `0` for the fungible interface;
      - `amount`: the `amount` argument, or `1` for the non-fungible interface;
-     - `operator`: `from`, or `msg.sender` when `from` is zero;
+     - `operator`: `from`, which is zero for a mint;
      - `kind`: as listed above;
      - `data`: empty.
 
@@ -431,7 +431,7 @@ ERC-7943 counts mints and burns as transfers but does not define `canTransfer` f
 
 A token that wants to limit which contracts act for its holders can restrict `approve` and operator approvals, where that authority is granted.
 
-`EXECUTED` and `FORCED` decisions may use `operator` and `data`. The submitter is part of what the policy is asked to approve, and a pre-flight for those kinds is specific to the token and knows the submitter. In `canTransfer`'s context, `operator` is set only so that the context is well formed. It cannot change the answer.
+`EXECUTED` and `FORCED` decisions may use `operator` and `data`. The submitter is part of what the policy is asked to approve, and a pre-flight for those kinds is specific to the token and knows the submitter. In `canTransfer`'s context, `operator` is `from`, zero for a mint, so the pre-flight context is a pure function of its arguments, the same whoever runs the simulation. It cannot change the answer.
 
 ERC-7943 forbids `canTransfer` from reverting, so a policy that reverts or misbehaves must turn into `false`. In Solidity, `try`/`catch` is not enough for this: it does not catch a failure to decode malformed return data. The reference implementation therefore makes a low-level `STATICCALL`, requires at least 32 bytes of return data (the minimum the decoder accepts on the movement path), and copies back only one word.
 
@@ -659,6 +659,8 @@ An escrow that must check the entitled account, for example before paying out a 
 `afterTransfer` is an external call made in the middle of a token operation. The token's guard stops it from starting another movement. Because it runs before any recipient hook, a recipient cannot act on policy state that does not yet include the movement.
 
 A stateful policy that is installed on a token which already has holders must be initialised to the token's current state, and so must a policy whose `wantsAfterTransfer` changes to `true`. This ERC does not standardise how. The reference policy lets its owner seed the count before it is installed.
+
+Reinstalling a policy is a new installation: while another policy was installed, it saw none of the token's movements, so state kept from its earlier installation is stale. The same holds for one token of a policy shared by several tokens, when that token switches away and back. Initialisation and installation should happen atomically, for example in one governance batch, so that no movement lands between reading the token's state and installing the policy.
 
 ### Balance changes that are not movements
 

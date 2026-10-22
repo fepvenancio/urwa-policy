@@ -374,6 +374,59 @@ contract ERCXXXXIntegrationTest is Helpers {
     _token.transfer(_actors[1], 1000);
   }
 
+  /// @notice A→B→A, steps 1–3: B is installed with the true count, then two holders arrive that A never sees
+  function _swapAwayAndMintTwoHolders() internal returns (ExamplePolicy _b) {
+    _b = _secondPolicy();
+    uint256 _trueCount = _policy.holderCount(); // 2; read before the prank
+    vm.prank(_admin);
+    _b.seedHolderCount(_trueCount);
+    _install(address(_b));
+    vm.startPrank(_minter);
+    _token.mint(_actors[2], 10);
+    _token.mint(_actors[3], 10);
+    vm.stopPrank();
+    assertEq(_b.holderCount(), 4);
+  }
+
+  /// @notice Reinstalling is a new installation: without a reseed, A's count is stale and its cap admits too many
+  function test_AReinstalledPolicyWithoutAReseedAdmitsHoldersPastTheCap() public {
+    _swapAwayAndMintTwoHolders();
+    vm.prank(_admin);
+    _policy.setCap(4);
+    _install(address(_policy));
+    assertEq(_policy.holderCount(), 2); // stale: A saw neither mint
+
+    address _fifth = makeAddr('fifth');
+    vm.prank(_admin);
+    _policy.setAllowlisted(_fifth, true);
+    vm.prank(_minter);
+    _token.mint(_fifth, 10); // admitted: 2 + 1 <= 4, yet five accounts now hold the token
+    assertEq(_policy.holderCount(), 3);
+  }
+
+  function test_AReinstalledPolicyReseededWithTheTrueCountEnforcesTheCap() public {
+    ExamplePolicy _b = _swapAwayAndMintTwoHolders();
+    uint256 _trueCount = _b.holderCount(); // 4; read before the prank
+    vm.startPrank(_admin);
+    _policy.setCap(4);
+    _policy.seedHolderCount(_trueCount); // allowed: the token consults B, not A
+    vm.stopPrank();
+    _install(address(_policy));
+    assertEq(_policy.holderCount(), 4);
+
+    address _fifth = makeAddr('fifth');
+    bytes32 _maxHolders = _policy.MAX_HOLDERS();
+    vm.prank(_admin);
+    _policy.setAllowlisted(_fifth, true);
+    vm.prank(_minter);
+    vm.expectRevert(abi.encodeWithSelector(IERCXXXX.ERCXXXXPolicyRejected.selector, _maxHolders));
+    _token.mint(_fifth, 10);
+
+    vm.prank(_actors[2]);
+    _token.transfer(_actors[3], 10); // a full exit to an existing holder
+    assertEq(_policy.holderCount(), 3);
+  }
+
   function test_OnceInstalled_ThePolicyCannotBeSeeded() public {
     vm.prank(_admin);
     vm.expectRevert(IExamplePolicy.ExamplePolicy_AlreadyInstalled.selector);

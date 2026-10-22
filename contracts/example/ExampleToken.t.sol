@@ -342,9 +342,10 @@ contract ExampleTokenUnitTest is Helpers {
     assertTrue(_token.canTransfer(_alice, _bob, 10));
   }
 
-  function test_CanTransfer_WhenMintShaped_ItAsksForAMintWithTheCallerAsOperator() public {
+  /// @notice The operator is `from`, zero for a mint: the context depends only on the arguments, not on the caller
+  function test_CanTransfer_WhenMintShaped_ItAsksForAMintWithZeroAsOperator() public {
     IERCXXXXPolicy.TransferContext memory _expected =
-      _ctx(address(0), _bob, 10, _minter, IERCXXXXPolicy.TransferKind.MINT);
+      _ctx(address(0), _bob, 10, address(0), IERCXXXXPolicy.TransferKind.MINT);
     vm.expectCall(_policy, abi.encodeCall(IERCXXXXPolicy.checkTransfer, (_expected)), 1);
     vm.prank(_minter);
     assertTrue(_token.canTransfer(address(0), _bob, 10));

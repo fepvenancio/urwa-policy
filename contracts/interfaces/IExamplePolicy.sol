@@ -58,7 +58,9 @@ interface IExamplePolicy is IERCXXXXPolicy {
   /**
    * @notice Sets the holder count to the token's current number of holders, before the token installs this policy
    * @dev Only the owner, and only while `TOKEN` does not consult this policy. Once installed, the count follows real
-   *      movements through `afterTransfer`
+   *      movements through `afterTransfer`. Seed before every installation, including a reinstall after another
+   *      policy: the policy sees no movements while it is not installed. Seed and install in one transaction, such as a
+   *      governance batch, so that no movement lands in between
    * @param _count The number of accounts holding a non-zero balance
    */
   function seedHolderCount(
