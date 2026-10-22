@@ -2,7 +2,7 @@
 title: uRWA Policy Interface
 description: An external policy that ERC-7943 tokens consult for every movement and for their compliance checks.
 author: Filipe Venancio (@fepvenancio)
-discussions-to: <Ethereum Magicians thread, to be created>
+discussions-to: https://ethereum-magicians.org/t/erc-tba-urwa-policy-interface/30048
 status: Draft
 type: Standards Track
 category: ERC
