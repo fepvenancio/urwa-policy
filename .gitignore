@@ -24,3 +24,9 @@
 !.env.example
 .DS_Store
 .letta/
+
+# Maintainer and AI-agent notes, kept local
+/CLAUDE.md
+/PLAN.md
+/.claude
+/.agents/
