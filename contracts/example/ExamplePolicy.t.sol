@@ -283,6 +283,27 @@ contract ExamplePolicyUnitTest is Helpers {
     _policy.seedHolderCountFromHolders(new address[](0));
   }
 
+  /// @notice A reseed reports the count it replaces, whichever seed sets it
+  function test_WhenTheCountIsReseeded_TheEventCarriesTheOldCount() public {
+    _installed(false);
+    vm.prank(_owner);
+    _policy.seedHolderCount(5);
+
+    _balance(_FIRST, 4);
+    _balance(_SECOND, 0);
+    _balance(_THIRD, 6);
+    _supply(10);
+    vm.expectEmit(address(_policy));
+    emit IExamplePolicy.HolderCountSeeded(5, 2);
+    vm.prank(_owner);
+    _policy.seedHolderCountFromHolders(_holders(_FIRST, _SECOND, _THIRD));
+
+    vm.expectEmit(address(_policy));
+    emit IExamplePolicy.HolderCountSeeded(2, 7);
+    vm.prank(_owner);
+    _policy.seedHolderCount(7);
+  }
+
   /*///////////////////////////////////////////////////////////////
                             ACCOUNT CHECKS
   //////////////////////////////////////////////////////////////*/
