@@ -168,6 +168,122 @@ contract ExamplePolicyUnitTest is Helpers {
   }
 
   /*///////////////////////////////////////////////////////////////
+                    SEEDING FROM A HOLDER LIST
+  //////////////////////////////////////////////////////////////*/
+
+  address internal constant _FIRST = address(0x1001);
+  address internal constant _SECOND = address(0x1002);
+  address internal constant _THIRD = address(0x1003);
+
+  /**
+   * @notice A holder list, in the order given
+   * @param _a The first entry
+   * @param _b The second entry
+   * @param _c The third entry
+   * @return _list The list
+   */
+  function _holders(
+    address _a,
+    address _b,
+    address _c
+  ) internal pure returns (address[] memory _list) {
+    _list = new address[](3);
+    _list[0] = _a;
+    _list[1] = _b;
+    _list[2] = _c;
+  }
+
+  /**
+   * @notice Mocks the token's total supply
+   * @param _amount The supply
+   */
+  function _supply(
+    uint256 _amount
+  ) internal {
+    vm.mockCall(_token, abi.encodeCall(IERC20.totalSupply, ()), abi.encode(_amount));
+  }
+
+  function test_WhenTheListCoversTheSupply_ItCountsTheNonZeroBalancesAndEmits() public {
+    _installed(false);
+    _balance(_FIRST, 5);
+    _balance(_SECOND, 0); // listed, holds nothing
+    _balance(_THIRD, 7);
+    _supply(12);
+    vm.expectCall(_token, abi.encodeCall(IERC20.totalSupply, ()), 1);
+    vm.expectEmit(address(_policy));
+    emit IExamplePolicy.HolderCountSeeded(0, 2);
+    vm.prank(_owner);
+    _policy.seedHolderCountFromHolders(_holders(_FIRST, _SECOND, _THIRD));
+    assertEq(_policy.holderCount(), 2);
+  }
+
+  /// @notice Any split of the supply among the listed accounts counts exactly, including after trades and full exits
+  function testFuzz_WhenTheListCoversTheSupply_TheCountIsExact(
+    uint256[3] memory _amounts
+  ) public {
+    _installed(false);
+    address[] memory _list = _holders(_FIRST, _SECOND, _THIRD);
+    uint256 _sum;
+    uint256 _expected;
+    for (uint256 _i; _i < 3; ++_i) {
+      _amounts[_i] = bound(_amounts[_i], 0, 1e30);
+      _balance(_list[_i], _amounts[_i]);
+      _sum += _amounts[_i];
+      if (_amounts[_i] > 0) ++_expected;
+    }
+    _supply(_sum);
+    vm.prank(_owner);
+    _policy.seedHolderCountFromHolders(_list);
+    assertEq(_policy.holderCount(), _expected);
+  }
+
+  function test_WhenAnAccountOutsideTheListHoldsTokens_TheListSeedReverts() public {
+    _installed(false);
+    _balance(_FIRST, 5);
+    _balance(_SECOND, 3);
+    _balance(_THIRD, 0);
+    _supply(9); // one unit is held outside the list
+    vm.prank(_owner);
+    vm.expectRevert(abi.encodeWithSelector(IExamplePolicy.ExamplePolicy_HoldersIncomplete.selector, 8, 9));
+    _policy.seedHolderCountFromHolders(_holders(_FIRST, _SECOND, _THIRD));
+  }
+
+  /// @notice Without the order check, listing the largest holder twice would add up to the supply and miss the rest
+  function test_WhenTheListIsNotStrictlyAscending_TheListSeedReverts() public {
+    _installed(false);
+    _balance(_FIRST, 1);
+    _balance(_SECOND, 1);
+    _balance(_THIRD, 2);
+    _supply(4);
+    address[] memory _repeated = new address[](2);
+    _repeated[0] = _THIRD;
+    _repeated[1] = _THIRD; // 2 + 2 == the supply
+    bytes4 _selector = IExamplePolicy.ExamplePolicy_HoldersNotAscending.selector;
+    vm.startPrank(_owner);
+    vm.expectRevert(abi.encodeWithSelector(_selector, 1));
+    _policy.seedHolderCountFromHolders(_repeated);
+    vm.expectRevert(abi.encodeWithSelector(_selector, 1));
+    _policy.seedHolderCountFromHolders(_holders(_SECOND, _FIRST, _THIRD));
+    vm.expectRevert(abi.encodeWithSelector(_selector, 0));
+    _policy.seedHolderCountFromHolders(new address[](1)); // the zero address
+    vm.stopPrank();
+  }
+
+  function test_WhenTheTokenHasInstalledThePolicy_TheListSeedReverts() public {
+    _installed(true);
+    vm.prank(_owner);
+    vm.expectRevert(IExamplePolicy.ExamplePolicy_AlreadyInstalled.selector);
+    _policy.seedHolderCountFromHolders(new address[](0));
+  }
+
+  function test_WhenANonOwnerSeedsFromAList_ItReverts() public {
+    _installed(false);
+    vm.prank(_stranger);
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _stranger));
+    _policy.seedHolderCountFromHolders(new address[](0));
+  }
+
+  /*///////////////////////////////////////////////////////////////
                             ACCOUNT CHECKS
   //////////////////////////////////////////////////////////////*/
 

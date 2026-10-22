@@ -474,6 +474,37 @@ contract ERCXXXXIntegrationTest is Helpers {
     _token.mint(_actors[3], 10);
   }
 
+  /// @notice A holder list fixed when the batch was prepared fails closed when an unlisted holder arrives first
+  function test_WhenAHolderArrivesBeforeTheBatch_AListThatMissesItReverts() public {
+    (SeedAndInstall _helper, ExamplePolicy _b,) = _snapshotThenAHolderArrives();
+    address[] memory _listed = new address[](2); // the holders when the batch was prepared
+    _listed[0] = _actors[0];
+    _listed[1] = _actors[1];
+    _listed = _ascending(_listed);
+    uint256 _sum = _token.balanceOf(_actors[0]) + _token.balanceOf(_actors[1]);
+    uint256 _supply = _token.totalSupply();
+
+    vm.expectRevert(abi.encodeWithSelector(IExamplePolicy.ExamplePolicy_HoldersIncomplete.selector, _sum, _supply));
+    _helper.seedFromHoldersAndInstall(address(_token), address(_b), _listed);
+    assertEq(_token.policy(), address(_policy)); // nothing was installed
+  }
+
+  /// @notice A list that also names accounts that may hold by then installs the true count, however old it is
+  function test_WhenAHolderArrivesBeforeTheBatch_AListCoveringItInstallsTheTrueCount() public {
+    (SeedAndInstall _helper, ExamplePolicy _b,) = _snapshotThenAHolderArrives();
+    address[] memory _listed = new address[](4); // every allowlisted account; actors[3] holds nothing
+    for (uint256 _i; _i < 4; ++_i) {
+      _listed[_i] = _actors[_i];
+    }
+    _helper.seedFromHoldersAndInstall(address(_token), address(_b), _ascending(_listed));
+    assertEq(_b.holderCount(), 3);
+
+    bytes32 _maxHolders = _b.MAX_HOLDERS();
+    vm.prank(_minter);
+    vm.expectRevert(abi.encodeWithSelector(IERCXXXX.ERCXXXXPolicyRejected.selector, _maxHolders));
+    _token.mint(_actors[3], 10);
+  }
+
   function test_OnceInstalled_ThePolicyCannotBeSeeded() public {
     vm.prank(_admin);
     vm.expectRevert(IExamplePolicy.ExamplePolicy_AlreadyInstalled.selector);

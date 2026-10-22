@@ -43,6 +43,19 @@ interface IExamplePolicy is IERCXXXXPolicy {
   error ExamplePolicy_AlreadyInstalled();
 
   /**
+   * @notice Thrown when the listed balances do not add up to the total supply: an account outside the list holds tokens
+   * @param _sum The sum of the listed balances
+   * @param _supply The token's total supply
+   */
+  error ExamplePolicy_HoldersIncomplete(uint256 _sum, uint256 _supply);
+
+  /**
+   * @notice Thrown when the holder list is not strictly ascending, which also rejects duplicates and the zero address
+   * @param _index The first entry that is not above the one before it (the first is compared with the zero address)
+   */
+  error ExamplePolicy_HoldersNotAscending(uint256 _index);
+
+  /**
    * @notice Thrown when `afterTransfer` is called by anyone but the token, or for another token
    * @param _caller The caller
    */
@@ -61,11 +74,24 @@ interface IExamplePolicy is IERCXXXXPolicy {
    *      movements through `afterTransfer`. Seed before every installation, including a reinstall after another
    *      policy: the policy sees no movements while it is not installed. Seeding and installing in one transaction
    *      closes the gap between them, but a count read off-chain can be stale by the time the batch runs: read it
-   *      on-chain in the same transaction, for example from the outgoing policy
+   *      on-chain in the same transaction, for example from the outgoing policy, or use `seedHolderCountFromHolders`
    * @param _count The number of accounts holding a non-zero balance
    */
   function seedHolderCount(
     uint256 _count
+  ) external;
+
+  /**
+   * @notice Sets the holder count from a list of accounts whose balances add up to the total supply, before the token
+   *         installs this policy
+   * @dev Only the owner, and only while `TOKEN` does not consult this policy. `TOKEN` must exist. If the listed balances
+   *      add up to `totalSupply()`, no account outside the list holds tokens, so the count is exact when the call runs,
+   *      however old the list is. Only non-zero balances count, so the list may name accounts that hold nothing yet.
+   *      Strictly ascending order rules out counting an account twice
+   * @param _holders The accounts, in strictly ascending order
+   */
+  function seedHolderCountFromHolders(
+    address[] calldata _holders
   ) external;
 
   /**

@@ -38,4 +38,20 @@ contract SeedAndInstall {
     IExamplePolicy(_newPolicy).seedHolderCount(IExamplePolicy(_oldPolicy).holderCount());
     IExampleToken(_token).setPolicy(_newPolicy);
   }
+
+  /**
+   * @notice Seeds from a holder list fixed when the batch was prepared, then installs: the policy checks the list
+   *         against the supply in this call
+   * @param _token The token
+   * @param _newPolicy The incoming policy
+   * @param _holders The accounts, in strictly ascending order
+   */
+  function seedFromHoldersAndInstall(
+    address _token,
+    address _newPolicy,
+    address[] calldata _holders
+  ) external {
+    IExamplePolicy(_newPolicy).seedHolderCountFromHolders(_holders);
+    IExampleToken(_token).setPolicy(_newPolicy);
+  }
 }

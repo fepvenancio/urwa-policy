@@ -658,7 +658,7 @@ An escrow that must check the entitled account, for example before paying out a 
 
 `afterTransfer` is an external call made in the middle of a token operation. The token's guard stops it from starting another movement. Because it runs before any recipient hook, a recipient cannot act on policy state that does not yet include the movement.
 
-A stateful policy that is installed on a token which already has holders must be initialised to the token's current state, and so must a policy whose `wantsAfterTransfer` changes to `true`. This ERC does not standardise how. The reference policy lets its owner seed the count before it is installed.
+A stateful policy that is installed on a token which already has holders must be initialised to the token's current state, and so must a policy whose `wantsAfterTransfer` changes to `true`. This ERC does not standardise how. The reference policy lets its owner seed the count before it is installed, either as a number or from a list of holders that it checks against `totalSupply()`.
 
 Reinstalling a policy is a new installation: while another policy was installed, it saw none of the token's movements, so state kept from its earlier installation is stale. The same holds for one token of a policy shared by several tokens, when that token switches away and back. Initialising a stateful policy has two windows. The first runs from initialisation to installation, and doing both in one transaction closes it. The second runs from reading the state to the moment the installation executes, and one transaction does not close it when the state was computed off-chain: a governance batch carries fixed calldata, so a value read when the batch was proposed may be stale when it runs. The second window closes only if:
 
@@ -666,6 +666,8 @@ Reinstalling a policy is a new installation: while another policy was installed,
 - the installing transaction reads or verifies the state on-chain, for example by copying it from the outgoing policy, or, for state derived from balances, by checking a sorted list of holders whose balances add up to `totalSupply()`;
 - the token is paused from the snapshot until the installation, remembering that a pause may not stop `FORCED` movements; or
 - the token exposes a count of its movements, and the installation reverts if the count changed since the snapshot. Such a counter is an optional extension, not part of this ERC.
+
+A list of holders checked against `totalSupply()` must be strictly ascending, so that no account is counted twice. Only its non-zero balances count, so the list may name accounts that hold nothing, including holders that have emptied their balance since the list was made.
 
 ### Balance changes that are not movements
 
