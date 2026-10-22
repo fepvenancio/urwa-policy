@@ -599,7 +599,6 @@ function _permits(
   bytes memory _payload
 ) internal view returns (bool _permitted) {
   address _activePolicy = _policy;
-  if (_activePolicy.code.length == 0) return false;
   bytes32 _ok = TRANSFER_OK;
   assembly ('memory-safe') {
     let _success := staticcall(gas(), _activePolicy, add(_payload, 0x20), mload(_payload), 0x00, 0x00)

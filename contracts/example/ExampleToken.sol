@@ -280,7 +280,8 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
   /**
    * @notice Calls the policy without reverting; permits only on at least 32 bytes whose first word is TRANSFER_OK
    * @dev Matches what Solidity's decoder accepts in `_update`. Copies one word, and only once the answer is long enough,
-   *      so a short answer can never be completed by leftover memory
+   *      so a short answer can never be completed by leftover memory. An address without code answers with no data, so
+   *      it never permits
    * @param _payload The encoded check
    * @return _permitted True if the policy permits
    */
@@ -288,7 +289,6 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
     bytes memory _payload
   ) internal view returns (bool _permitted) {
     address _activePolicy = _policy;
-    if (_activePolicy.code.length == 0) return false;
     bytes32 _ok = TRANSFER_OK;
     assembly ('memory-safe') {
       let _success := staticcall(gas(), _activePolicy, add(_payload, 0x20), mload(_payload), 0x00, 0x00)

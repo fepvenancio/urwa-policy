@@ -269,6 +269,24 @@ contract ExamplePolicyUnitTest is Helpers {
     assertEq(_policy.checkTransfer(_ctx(_alice, address(0), 10, IERCXXXXPolicy.TransferKind.BURN)), TRANSFER_OK);
   }
 
+  function test_CheckTransfer_AtTheCap_AZeroAmountNeverCountsAsANewHolder() public {
+    vm.prank(_owner);
+    _policy.setCap(1);
+    _countNewHolder(_alice, 10);
+    assertEq(_policy.checkTransfer(_ctx(_alice, _bob, 0, IERCXXXXPolicy.TransferKind.TRANSFER)), TRANSFER_OK);
+    assertEq(_policy.checkTransfer(_ctx(address(0), _bob, 0, IERCXXXXPolicy.TransferKind.MINT)), TRANSFER_OK);
+  }
+
+  function test_CheckTransfer_AtTheCap_ASelfTransferIsNeverCapped() public {
+    vm.prank(_owner);
+    _policy.setCap(1);
+    _countNewHolder(_alice, 10);
+    // A holder sending to itself passes through the existing-holder branch as well.
+    assertEq(_policy.checkTransfer(_ctx(_alice, _alice, 5, IERCXXXXPolicy.TransferKind.TRANSFER)), TRANSFER_OK);
+    // Only this case depends on the self-transfer guard: with no balance, the movement could never execute.
+    assertEq(_policy.checkTransfer(_ctx(_carol, _carol, 5, IERCXXXXPolicy.TransferKind.TRANSFER)), TRANSFER_OK);
+  }
+
   function test_CheckTransfer_WhenTheKindIsOutsideTheEnumeration_ItReverts() public view {
     IRawPolicy.RawContext memory _raw = IRawPolicy.RawContext({
       token: _token, from: _alice, to: _bob, tokenId: 0, amount: 1, operator: _alice, kind: 5, data: ''

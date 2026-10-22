@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {IERC20Errors} from '@openzeppelin/contracts/interfaces/draft-IERC6093.sol';
+import {Pausable} from '@openzeppelin/contracts/utils/Pausable.sol';
 import {ReentrancyGuardTransient} from '@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol';
 import {stdError} from 'forge-std/StdError.sol';
 
@@ -21,6 +22,7 @@ import {
   ShortBoolPolicy,
   ShortReturnPolicy
 } from 'contracts/test/FaultyPolicies.sol';
+import {ForcedThenTransfer} from 'contracts/test/ForcedThenTransfer.sol';
 import {Helpers} from 'contracts/test/Helpers.sol';
 
 /// @notice The ERC-20 Transfer event, for `vm.expectEmit`
@@ -412,6 +414,23 @@ contract ERCXXXXIntegrationTest is Helpers {
     vm.prank(_enforcer);
     _token.forcedTransfer(_actors[0], _actors[2], 100);
     assertEq(_token.getFrozenTokens(_actors[0]), 900);
+  }
+
+  /// @notice While paused, a forced transfer goes through, but an ordinary transfer right after it, in the same call, does not
+  function test_AForcedTransferDoesNotLeakItsKindToTheNextMovement() public {
+    ForcedThenTransfer _helper = new ForcedThenTransfer();
+    bytes32 _enforcerRole = _token.ENFORCER_ROLE(); // read before the prank, which the next call would consume
+    vm.startPrank(_admin);
+    _token.grantRole(_enforcerRole, address(_helper));
+    _policy.setAllowlisted(address(_helper), true);
+    vm.stopPrank();
+    vm.prank(_minter);
+    _token.mint(address(_helper), 10);
+    vm.prank(_pauser);
+    _token.pause();
+
+    vm.expectRevert(Pausable.EnforcedPause.selector);
+    _helper.run(address(_token), _actors[0], _actors[1], 5, _actors[1], 3);
   }
 
   function test_AForcedTransferStillNeedsAnEligibleReceiver() public {

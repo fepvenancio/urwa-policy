@@ -5,6 +5,7 @@ import {IAccessControl} from '@openzeppelin/contracts/access/IAccessControl.sol'
 import {IERC20Errors} from '@openzeppelin/contracts/interfaces/draft-IERC6093.sol';
 import {Pausable} from '@openzeppelin/contracts/utils/Pausable.sol';
 import {IERC165} from '@openzeppelin/contracts/utils/introspection/IERC165.sol';
+import {Vm} from 'forge-std/Vm.sol';
 
 import {IERC7943Fungible} from 'interfaces/IERC7943Fungible.sol';
 import {IERCXXXX} from 'interfaces/IERCXXXX.sol';
@@ -12,6 +13,7 @@ import {IERCXXXXPolicy, TRANSFER_OK} from 'interfaces/IERCXXXXPolicy.sol';
 import {IExampleToken} from 'interfaces/IExampleToken.sol';
 
 import {ExampleToken} from 'contracts/example/ExampleToken.sol';
+import {ForcedThenTransfer} from 'contracts/test/ForcedThenTransfer.sol';
 import {Helpers} from 'contracts/test/Helpers.sol';
 
 /// @notice ExampleToken in isolation: the policy is a mocked address
@@ -233,6 +235,50 @@ contract ExampleTokenUnitTest is Helpers {
     assertEq(_token.balanceOf(_bob), 100);
   }
 
+  /// @notice The forced label is transient: it must not leak to the next movement in the same transaction
+  function test_WhenAForcedTransferIsFollowedByATransferInOneCall_TheSecondIsATransfer() public {
+    ForcedThenTransfer _helper = new ForcedThenTransfer();
+    bytes32 _enforcerRole = _token.ENFORCER_ROLE(); // read before the prank, which the next call would consume
+    vm.prank(_admin);
+    _token.grantRole(_enforcerRole, address(_helper));
+    vm.prank(_minter);
+    _token.mint(address(_helper), 10);
+
+    IERCXXXXPolicy.TransferContext memory _forced =
+      _ctx(_alice, _bob, 5, address(_helper), IERCXXXXPolicy.TransferKind.FORCED);
+    IERCXXXXPolicy.TransferContext memory _ordinary =
+      _ctx(address(_helper), _bob, 3, address(_helper), IERCXXXXPolicy.TransferKind.TRANSFER);
+    vm.expectCall(_policy, abi.encodeCall(IERCXXXXPolicy.checkTransfer, (_forced)), 1);
+    vm.expectCall(_policy, abi.encodeCall(IERCXXXXPolicy.checkTransfer, (_ordinary)), 1);
+    _helper.run(address(_token), _alice, _bob, 5, _bob, 3);
+  }
+
+  function test_WhenForcingMoreThanTheBalance_ItRevertsWithTheERC20Error() public {
+    vm.startPrank(_enforcer);
+    vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, _alice, 1000, 1001));
+    _token.forcedTransfer(_alice, _bob, 1001);
+
+    _token.setFrozenTokens(_alice, 300);
+    vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, _alice, 1000, 1001));
+    _token.forcedTransfer(_alice, _bob, 1001);
+    vm.stopPrank();
+  }
+
+  /// @notice Moving exactly the unfrozen balance takes no frozen tokens, so nothing is unfrozen and no event is due
+  function test_WhenForcingExactlyTheUnfrozenBalance_ItEmitsNoFrozenEvent() public {
+    vm.prank(_enforcer);
+    _token.setFrozenTokens(_alice, 950);
+
+    vm.recordLogs();
+    vm.prank(_enforcer);
+    _token.forcedTransfer(_alice, _bob, 50);
+    Vm.Log[] memory _logs = vm.getRecordedLogs();
+    for (uint256 _i; _i < _logs.length; ++_i) {
+      assertTrue(_logs[_i].topics[0] != IERC7943Fungible.Frozen.selector);
+    }
+    assertEq(_token.getFrozenTokens(_alice), 950);
+  }
+
   function test_WhenThePolicyRejectsAForcedTransfer_ItReverts() public {
     _rejectTransfers();
     vm.prank(_enforcer);
@@ -346,6 +392,18 @@ contract ExampleTokenUnitTest is Helpers {
   function test_CanTransfer_WhenTheAnswerIsEmpty_ItReturnsFalse() public {
     vm.mockCall(_policy, abi.encodeWithSelector(IERCXXXXPolicy.checkTransfer.selector), '');
     assertFalse(_token.canTransfer(_alice, _bob, 10));
+  }
+
+  /// @notice Token rule 4 and check rule 5: a policy address without code never permits
+  function test_WhenThePolicyHasNoCode_PreflightsAreFalseAndMovementsRevert() public {
+    vm.clearMockedCalls(); // mocks would otherwise answer for the address even without code
+    vm.etch(_policy, '');
+    assertFalse(_token.canTransfer(_alice, _bob, 10));
+    assertFalse(_token.canSend(_alice));
+    assertFalse(_token.canReceive(_alice));
+    vm.prank(_alice);
+    vm.expectRevert();
+    _token.transfer(_bob, 10);
   }
 
   function test_CanSendAndCanReceive_ForwardThePolicysAnswer() public {
