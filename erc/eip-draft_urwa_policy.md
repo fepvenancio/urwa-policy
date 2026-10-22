@@ -669,6 +669,14 @@ Reinstalling a policy is a new installation: while another policy was installed,
 
 A list of holders checked against `totalSupply()` must be strictly ascending, so that no account is counted twice. Only its non-zero balances count, so the list may name accounts that hold nothing, including holders that have emptied their balance since the list was made.
 
+A check against `totalSupply()` rejects stale state, but it does not make the installation complete. If an account outside the list can become a holder while a timelocked installation is pending, a transfer to it makes the installation revert, and whoever can make that transfer can repeat it on every attempt. A movement counter is stricter still: any movement makes it revert. The installation completes reliably only if the set of possible holders is closed while it is pending, for example:
+
+- the list names every account the outgoing policy would let receive, and no account is made eligible until the installation executes. This needs eligibility that can be enumerated, such as an allowlist, and is limited by how many entries fit in one transaction;
+- a first installation puts in a policy that admits only receivers already holding a balance, while still applying the token's eligibility rules, and the list is then taken from the current holders. This costs one more installation. If that policy lets a `FORCED` movement reach a new account, the set is open again; if it does not, enforcement cannot move tokens to a new account until the second installation executes;
+- the state lives in a contract that stays in place across policy replacements, so no list is needed.
+
+Copying the state from the outgoing policy completes in one step, but only when the outgoing policy is trusted.
+
 ### Balance changes that are not movements
 
 The policy sees only movements: changes recorded by the base standard's transfer events. Balance changes that emit no transfer event, such as rebasing or interest accrual, are never checked. A token whose balances change that way must take this into account in its policy.
