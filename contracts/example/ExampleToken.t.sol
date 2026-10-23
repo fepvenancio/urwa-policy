@@ -418,6 +418,18 @@ contract ExampleTokenUnitTest is Helpers {
     assertFalse(_token.canTransfer(_alice, _bob, 5));
   }
 
+  /// @notice ERC-7943 leaves a balance shortfall to the base standard: with nothing frozen, it does not make `false`
+  function test_CanTransfer_WhenNothingIsFrozenAndTheAmountExceedsTheBalance_ItReturnsTrue() public {
+    assertTrue(_token.canTransfer(_alice, _bob, 1001));
+  }
+
+  /// @notice With part of the balance frozen, an amount above the unfrozen amount is refused, even above the balance
+  function test_CanTransfer_WhenTokensAreFrozenAndTheAmountExceedsTheBalance_ItReturnsFalse() public {
+    vm.prank(_enforcer);
+    _token.setFrozenTokens(_alice, 1);
+    assertFalse(_token.canTransfer(_alice, _bob, 1001));
+  }
+
   function test_CanTransfer_WhenThePolicyRejects_ItReturnsFalse() public {
     _rejectTransfers();
     assertFalse(_token.canTransfer(_alice, _bob, 10));

@@ -258,9 +258,11 @@ contract ERCXXXXIntegrationTest is Helpers {
     _apply(_scenario(_allowMask, _paused, _frozen, _cap), _from);
 
     bool _predicted = _token.canTransfer(_from, _to, _amount);
+    // ERC-7943 leaves a balance shortfall to the base standard, so `canTransfer` does not predict it.
+    bool _withinBalance = _amount <= _token.balanceOf(_from);
     vm.prank(_from);
     (bool _succeeded,) = address(_token).call(abi.encodeCall(_token.transfer, (_to, _amount)));
-    assertEq(_succeeded, _predicted);
+    assertEq(_succeeded, _predicted && _withinBalance);
   }
 
   /// @notice The same decision when a spender submits: TRANSFER does not depend on `operator`
@@ -279,9 +281,10 @@ contract ERCXXXXIntegrationTest is Helpers {
     _apply(_scenario(_allowMask, _paused, _frozen, _cap), _from);
 
     bool _predicted = _token.canTransfer(_from, _to, _amount);
+    bool _withinBalance = _amount <= _token.balanceOf(_from);
     vm.prank(_spender);
     (bool _succeeded,) = address(_token).call(abi.encodeCall(_token.transferFrom, (_from, _to, _amount)));
-    assertEq(_succeeded, _predicted);
+    assertEq(_succeeded, _predicted && _withinBalance);
   }
 
   function testFuzz_CanTransferPredictsMint(
@@ -314,9 +317,10 @@ contract ERCXXXXIntegrationTest is Helpers {
     _apply(_scenario(_allowMask, _paused, _frozen, _cap), _from);
 
     bool _predicted = _token.canTransfer(_from, address(0), _amount);
+    bool _withinBalance = _amount <= _token.balanceOf(_from);
     vm.prank(_from);
     (bool _succeeded,) = address(_token).call(abi.encodeCall(_token.burn, (_amount)));
-    assertEq(_succeeded, _predicted);
+    assertEq(_succeeded, _predicted && _withinBalance);
   }
 
   /*///////////////////////////////////////////////////////////////

@@ -301,11 +301,13 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
 
   /**
    * @notice The token's own checks, shared by `_update` and `canTransfer`
-   * @dev Enforcement ignores the pause, and `forcedTransfer` has already unfrozen what it moves
+   * @dev Enforcement ignores the pause, and `forcedTransfer` has already unfrozen what it moves. As in ERC-7943, the
+   *      unfrozen check applies only while part of the balance is frozen: a balance shortfall with nothing frozen is
+   *      left to the base standard, which reverts with `ERC20InsufficientBalance`
    * @param _from The sender, or address(0)
    * @param _amount The amount
    * @param _kind The kind
-   * @return _reason TRANSFER_OK, `_PAUSED` or `_INSUFFICIENT_UNFROZEN`
+   * @return _reason TRANSFER_OK, `_PAUSED`, or `_INSUFFICIENT_UNFROZEN` when frozen tokens stand in the way
    */
   function _tokenCheck(
     address _from,
@@ -314,7 +316,7 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
   ) internal view returns (bytes32 _reason) {
     if (_kind == IERCXXXXPolicy.TransferKind.FORCED) return TRANSFER_OK;
     if (paused()) return _PAUSED;
-    if (_from != address(0) && _amount > _unfrozen(_from)) return _INSUFFICIENT_UNFROZEN;
+    if (_from != address(0) && _frozen[_from] > 0 && _amount > _unfrozen(_from)) return _INSUFFICIENT_UNFROZEN;
     _reason = TRANSFER_OK;
   }
 

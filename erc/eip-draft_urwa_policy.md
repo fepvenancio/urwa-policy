@@ -303,7 +303,7 @@ The set of kinds is closed. The encodings are `TRANSFER = 0`, `EXECUTED = 1`, `F
      - `data`: empty.
 
    When both `from` and `to` are zero, `canTransfer` MUST return `false`. With a zero `from` or `to`, the zero side has no account, so the token applies no account-level check to it.
-4. The token's own checks in `canTransfer` include ERC-7943's unfrozen-amount validation. For amount-based tokens, that validation also rejects an amount above the balance. Ownership of a non-fungible token and allowances stay outside `canTransfer`, as ERC-7943 specifies for base-standard validations. This ERC also leaves access control on mint and burn functions outside it.
+4. The token's own checks in `canTransfer` include ERC-7943's unfrozen-amount validation: when part of `from`'s balance is frozen, `canTransfer` returns `false` for an `amount` above the unfrozen amount. Balances, ownership of a non-fungible token and allowances stay outside `canTransfer`, as ERC-7943 specifies for base-standard validations: with nothing frozen, an `amount` above the balance does not make `canTransfer` return `false`, although the movement fails. This ERC also leaves access control on mint and burn functions outside it.
 5. `canSend`, `canReceive` and `canTransfer` MUST NOT revert, as ERC-7943 requires. They MUST return `false` when any of the following happens:
    - the policy call reverts;
    - it runs out of gas;
@@ -510,7 +510,6 @@ This ERC does not change ERC-7943's interface. A token that adopts it keeps that
 - **Caller independence.** It narrows ERC-7943: the checks may not depend on `msg.sender`.
 - **Zero addresses.** It defines `canTransfer` for a zero `from` or `to`, which ERC-7943 leaves undefined.
 - **Prediction scope.** It reads `canTransfer` as the pre-flight for `TRANSFER`, `MINT` and `BURN` movements only. ERC-7943 counts every operation that emits a transfer event as a transfer, so this is a reading, which ERC-7943's authors should confirm.
-- **Unfrozen amount.** It treats ERC-7943's unfrozen-amount validation as also rejecting an amount above the balance.
 
 An adapter can present an ERC-3643 token's compliance contract and identity registry as an `IERCXXXXPolicy`, mirroring ERC-3643's rules:
 - **`checkSend`** permits when the account's wallet is not frozen on the ERC-3643 token.
