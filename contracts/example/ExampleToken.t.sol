@@ -31,10 +31,11 @@ contract ExampleTokenUnitTest is Helpers {
   address internal _spender = makeAddr('spender');
 
   function setUp() public {
+    _token = new ExampleToken('Example', 'EX', _admin);
     _policy = _mockPolicy('policy');
-    _token = new ExampleToken('Example', 'EX', _admin, _policy);
 
     vm.startPrank(_admin);
+    _token.setPolicy(_policy, '');
     _token.grantRole(_token.MINTER_ROLE(), _minter);
     _token.grantRole(_token.ENFORCER_ROLE(), _enforcer);
     _token.grantRole(_token.PAUSER_ROLE(), _pauser);
@@ -60,6 +61,7 @@ contract ExampleTokenUnitTest is Helpers {
     vm.mockCall(_mocked, abi.encodeWithSelector(IERCXXXXPolicy.checkSend.selector), abi.encode(TRANSFER_OK));
     vm.mockCall(_mocked, abi.encodeWithSelector(IERCXXXXPolicy.checkReceive.selector), abi.encode(TRANSFER_OK));
     vm.mockCall(_mocked, abi.encodeCall(IERCXXXXPolicy.wantsAfterTransfer, ()), abi.encode(false));
+    vm.mockCall(_mocked, abi.encodeWithSelector(IERCXXXXPolicy.onInstall.selector), '');
   }
 
   function _ctx(
@@ -89,11 +91,16 @@ contract ExampleTokenUnitTest is Helpers {
                             POLICY INSTALLATION
   //////////////////////////////////////////////////////////////*/
 
-  function test_WhenConstructed_ItInstallsThePolicyAndEmits() public {
-    vm.expectEmit();
-    emit IERCXXXX.PolicyChanged(address(0), _policy);
-    ExampleToken _fresh = new ExampleToken('Example', 'EX', _admin, _policy);
-    assertEq(_fresh.policy(), _policy);
+  function test_WhenConstructed_ItHasNoPolicyAndRejectsEveryMovement() public {
+    ExampleToken _fresh = new ExampleToken('Example', 'EX', _admin);
+    bytes32 _minterRole = _fresh.MINTER_ROLE();
+    vm.prank(_admin);
+    _fresh.grantRole(_minterRole, _minter);
+    assertEq(_fresh.policy(), address(0));
+    assertFalse(_fresh.canTransfer(address(0), _alice, 1));
+    vm.prank(_minter);
+    vm.expectRevert();
+    _fresh.mint(_alice, 1);
   }
 
   function test_WhenThePolicyDoesNotAdvertiseTheInterface_ItReverts() public {
@@ -103,7 +110,7 @@ contract ExampleTokenUnitTest is Helpers {
     );
     vm.prank(_admin);
     vm.expectRevert(abi.encodeWithSelector(IExampleToken.ExampleToken_PolicyNotSupported.selector, _other));
-    _token.setPolicy(_other);
+    _token.setPolicy(_other, '');
   }
 
   function test_WhenANonAdminSetsThePolicy_ItReverts() public {
@@ -113,7 +120,7 @@ contract ExampleTokenUnitTest is Helpers {
     vm.expectRevert(
       abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, _alice, _adminRole)
     );
-    _token.setPolicy(_other);
+    _token.setPolicy(_other, '');
   }
 
   function test_WhenTheAdminSetsThePolicy_ItReplacesItAndEmits() public {
@@ -121,8 +128,25 @@ contract ExampleTokenUnitTest is Helpers {
     vm.expectEmit(address(_token));
     emit IERCXXXX.PolicyChanged(_policy, _other);
     vm.prank(_admin);
-    _token.setPolicy(_other);
+    _token.setPolicy(_other, '');
     assertEq(_token.policy(), _other);
+  }
+
+  function test_WhenTheAdminSetsThePolicy_ItCallsOnInstallWithThePreviousPolicyAndTheData() public {
+    address _other = _mockPolicy('other');
+    vm.expectCall(_other, abi.encodeCall(IERCXXXXPolicy.onInstall, (address(_token), _policy, hex'c0ffee')), 1);
+    vm.prank(_admin);
+    _token.setPolicy(_other, hex'c0ffee');
+  }
+
+  function test_WhenOnInstallReverts_TheInstallationRevertsAndThePreviousPolicyStays() public {
+    address _other = _mockPolicy('other');
+    bytes memory _failure = abi.encodeWithSignature('NotNow()');
+    vm.mockCallRevert(_other, abi.encodeWithSelector(IERCXXXXPolicy.onInstall.selector), _failure);
+    vm.prank(_admin);
+    vm.expectRevert(_failure);
+    _token.setPolicy(_other, '');
+    assertEq(_token.policy(), _policy);
   }
 
   /*///////////////////////////////////////////////////////////////

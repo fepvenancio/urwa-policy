@@ -5,12 +5,20 @@ import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {ERC165} from '@openzeppelin/contracts/utils/introspection/ERC165.sol';
 import {IERC165} from '@openzeppelin/contracts/utils/introspection/IERC165.sol';
 
+import {IERCXXXX} from 'interfaces/IERCXXXX.sol';
 import {IERCXXXXPolicy, TRANSFER_OK} from 'interfaces/IERCXXXXPolicy.sol';
+import {IExampleToken} from 'interfaces/IExampleToken.sol';
 
 /// @notice Permits everything; the base of the faulty policies below
 abstract contract PermissivePolicy is ERC165, IERCXXXXPolicy {
   function afterTransfer(
     TransferContext calldata
+  ) external virtual {}
+
+  function onInstall(
+    address,
+    address,
+    bytes calldata
   ) external virtual {}
 
   function checkReceive(
@@ -107,6 +115,60 @@ contract ReentrantPolicy is PermissivePolicy {
   ) external override {
     // solhint-disable-next-line custom-errors
     require(IERC20(_context.token).transfer(address(0xBEEF), 1), 'unreachable');
+  }
+}
+
+/// @notice Reverts when installed
+contract RevertingInstallPolicy is PermissivePolicy {
+  error RevertingInstallPolicy_Failure();
+
+  function onInstall(
+    address,
+    address,
+    bytes calldata
+  ) external pure override {
+    revert RevertingInstallPolicy_Failure();
+  }
+}
+
+/// @notice When installed, tries to move tokens or, given a next policy and the admin role, to install it
+contract ReentrantInstallPolicy is PermissivePolicy {
+  address public immutable NEXT;
+
+  constructor(
+    address _next
+  ) {
+    NEXT = _next;
+  }
+
+  function onInstall(
+    address _token,
+    address,
+    bytes calldata
+  ) external override {
+    if (NEXT == address(0)) {
+      // solhint-disable-next-line custom-errors
+      require(IERC20(_token).transfer(address(0xBEEF), 0), 'unreachable');
+    } else {
+      IExampleToken(_token).setPolicy(NEXT, '');
+    }
+  }
+}
+
+/// @notice Records what it sees inside `onInstall`
+contract InstallRecorderPolicy is PermissivePolicy {
+  address public seenPolicy;
+  address public seenPrevious;
+  bytes public seenData;
+
+  function onInstall(
+    address _token,
+    address _previousPolicy,
+    bytes calldata _data
+  ) external override {
+    seenPolicy = IERCXXXX(_token).policy();
+    seenPrevious = _previousPolicy;
+    seenData = _data;
   }
 }
 

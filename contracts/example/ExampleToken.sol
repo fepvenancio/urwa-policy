@@ -42,17 +42,14 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
   /**
    * @param _name The token name
    * @param _symbol The token symbol
-   * @param _admin The DEFAULT_ADMIN_ROLE holder
-   * @param _initialPolicy The first policy
+   * @param _admin The DEFAULT_ADMIN_ROLE holder, who installs the first policy
    */
   constructor(
     string memory _name,
     string memory _symbol,
-    address _admin,
-    address _initialPolicy
+    address _admin
   ) ERC20(_name, _symbol) {
     _grantRole(DEFAULT_ADMIN_ROLE, _admin);
-    _setPolicy(_initialPolicy);
   }
 
   /*///////////////////////////////////////////////////////////////
@@ -109,11 +106,21 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
     _pause();
   }
 
-  /// @inheritdoc IExampleToken
+  /**
+   * @inheritdoc IExampleToken
+   * @dev Shares `_update`'s guard, so `onInstall` can start neither a movement nor another installation
+   */
   function setPolicy(
-    address _newPolicy
-  ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-    _setPolicy(_newPolicy);
+    address _newPolicy,
+    bytes calldata _data
+  ) external nonReentrant onlyRole(DEFAULT_ADMIN_ROLE) {
+    if (!ERC165Checker.supportsInterface(_newPolicy, type(IERCXXXXPolicy).interfaceId)) {
+      revert ExampleToken_PolicyNotSupported(_newPolicy);
+    }
+    address _previousPolicy = _policy;
+    emit PolicyChanged(_previousPolicy, _newPolicy);
+    _policy = _newPolicy;
+    IERCXXXXPolicy(_newPolicy).onInstall(address(this), _previousPolicy, _data);
   }
 
   /// @inheritdoc IExampleToken
@@ -213,20 +220,6 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
     super._update(_from, _to, _value);
 
     if (_activePolicy.wantsAfterTransfer()) _activePolicy.afterTransfer(_ctx);
-  }
-
-  /**
-   * @notice Installs a policy that advertises the ERC-XXXX policy interface
-   * @param _newPolicy The policy
-   */
-  function _setPolicy(
-    address _newPolicy
-  ) internal {
-    if (!ERC165Checker.supportsInterface(_newPolicy, type(IERCXXXXPolicy).interfaceId)) {
-      revert ExampleToken_PolicyNotSupported(_newPolicy);
-    }
-    emit PolicyChanged(_policy, _newPolicy);
-    _policy = _newPolicy;
   }
 
   /**

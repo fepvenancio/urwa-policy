@@ -71,6 +71,19 @@ interface IERCXXXXPolicy is IERC165 {
   ) external;
 
   /**
+   * @notice Initialises the policy for a token that installs it
+   * @dev Called by the token on every installation, once its `policy()` returns this policy. Only `_token` may call it
+   * @param _token The token installing the policy
+   * @param _previousPolicy The policy the token consulted until now; address(0) on the first installation
+   * @param _data Data from the account that installs the policy, passed on unchanged
+   */
+  function onInstall(
+    address _token,
+    address _previousPolicy,
+    bytes calldata _data
+  ) external;
+
+  /**
    * @notice Account-level eligibility to receive `_token`; backs the token's ERC-7943 `canReceive`
    * @param _token The token
    * @param _account The account

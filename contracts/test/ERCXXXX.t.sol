@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 import {IERC20Errors} from '@openzeppelin/contracts/interfaces/draft-IERC6093.sol';
 import {Pausable} from '@openzeppelin/contracts/utils/Pausable.sol';
 import {ReentrancyGuardTransient} from '@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol';
-import {stdError} from 'forge-std/StdError.sol';
 
 import {IERC7943Fungible} from 'interfaces/IERC7943Fungible.sol';
 import {IERCXXXX} from 'interfaces/IERCXXXX.sol';
@@ -17,14 +16,16 @@ import {
   BadBoolPolicy,
   EchoContract,
   ForgetfulPolicy,
+  InstallRecorderPolicy,
+  ReentrantInstallPolicy,
   ReentrantPolicy,
+  RevertingInstallPolicy,
   RevertingPolicy,
   ShortBoolPolicy,
   ShortReturnPolicy
 } from 'contracts/test/FaultyPolicies.sol';
 import {ForcedThenTransfer} from 'contracts/test/ForcedThenTransfer.sol';
 import {Helpers} from 'contracts/test/Helpers.sol';
-import {SeedAndInstall} from 'contracts/test/SeedAndInstall.sol';
 
 /// @notice The ERC-20 Transfer event, for `vm.expectEmit`
 interface IERC20Events {
@@ -51,11 +52,9 @@ contract ERCXXXXIntegrationTest is Helpers {
   ExampleToken internal _token;
 
   function setUp() public {
-    // The policy is bound to the token, so it is deployed for the token's predicted address.
-    address _predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
-    _policy = new ExamplePolicy(_predicted, _admin, 10);
-    _token = new ExampleToken('Example', 'EX', _admin, address(_policy));
-    assertEq(address(_token), _predicted);
+    _token = new ExampleToken('Example', 'EX', _admin);
+    _policy = new ExamplePolicy(address(_token), _admin, 10);
+    _installWithHolders(address(_policy), new address[](0)); // no supply yet
 
     vm.startPrank(_admin);
     _token.grantRole(_token.MINTER_ROLE(), _minter);
@@ -82,7 +81,28 @@ contract ERCXXXXIntegrationTest is Helpers {
     address _newPolicy
   ) internal {
     vm.prank(_admin);
-    _token.setPolicy(_newPolicy);
+    _token.setPolicy(_newPolicy, '');
+  }
+
+  /**
+   * @notice Installs a policy with a holder list, sorted here, as its `onInstall` data
+   * @param _newPolicy The policy
+   * @param _holders The accounts, in any order
+   */
+  function _installWithHolders(
+    address _newPolicy,
+    address[] memory _holders
+  ) internal {
+    vm.prank(_admin);
+    _token.setPolicy(_newPolicy, abi.encode(_ascending(_holders)));
+  }
+
+  /// @notice Every actor: a list that covers every account the example policy lets hold the token
+  function _everyActor() internal view returns (address[] memory _list) {
+    _list = new address[](_actors.length);
+    for (uint256 _i; _i < _actors.length; ++_i) {
+      _list[_i] = _actors[_i];
+    }
   }
 
   function _transferContext() internal view returns (IERCXXXXPolicy.TransferContext memory _context) {
@@ -110,12 +130,13 @@ contract ERCXXXXIntegrationTest is Helpers {
     assertEq(IERCXXXXPolicy.checkTransfer.selector, bytes4(0x64a1a08e));
     assertEq(IERCXXXXPolicy.wantsAfterTransfer.selector, bytes4(0x38bff1a5));
     assertEq(IERCXXXXPolicy.afterTransfer.selector, bytes4(0x2595b359));
+    assertEq(IERCXXXXPolicy.onInstall.selector, bytes4(0x820203aa));
     assertEq(IERCXXXX.policy.selector, bytes4(0x0505c8c9));
     assertEq(
       IERCXXXXPolicy.checkTransfer.selector,
       bytes4(keccak256('checkTransfer((address,address,address,uint256,uint256,address,uint8,bytes))'))
     );
-    assertEq(type(IERCXXXXPolicy).interfaceId, bytes4(0x1eb76933));
+    assertEq(type(IERCXXXXPolicy).interfaceId, bytes4(0x9cb56a99));
     assertEq(type(IERCXXXX).interfaceId, bytes4(0x0505c8c9));
     assertEq(type(IERC7943Fungible).interfaceId, bytes4(0x3edbb4c4)); // as stated in ERC-7943
   }
@@ -192,6 +213,43 @@ contract ERCXXXXIntegrationTest is Helpers {
     vm.prank(_actors[0]);
     vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
     _token.transfer(_actors[1], 1);
+  }
+
+  /*///////////////////////////////////////////////////////////////
+                            INSTALLATION
+  //////////////////////////////////////////////////////////////*/
+
+  function test_OnInstallRunsAfterThePolicySwitchesWithThePreviousPolicyAndTheData() public {
+    InstallRecorderPolicy _recorder = new InstallRecorderPolicy();
+    vm.prank(_admin);
+    _token.setPolicy(address(_recorder), hex'c0ffee');
+    assertEq(_recorder.seenPolicy(), address(_recorder));
+    assertEq(_recorder.seenPrevious(), address(_policy));
+    assertEq(_recorder.seenData(), hex'c0ffee');
+  }
+
+  function test_WhenOnInstallReverts_ThePreviousPolicyStays() public {
+    address _reverting = address(new RevertingInstallPolicy());
+    vm.prank(_admin);
+    vm.expectRevert(RevertingInstallPolicy.RevertingInstallPolicy_Failure.selector);
+    _token.setPolicy(_reverting, '');
+    assertEq(_token.policy(), address(_policy));
+  }
+
+  function test_OnInstallCannotStartAMovementOrAnotherInstallation() public {
+    address _mover = address(new ReentrantInstallPolicy(address(0)));
+    vm.prank(_admin);
+    vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
+    _token.setPolicy(_mover, '');
+
+    address _installer = address(new ReentrantInstallPolicy(address(new ForgetfulPolicy())));
+    bytes32 _adminRole = _token.DEFAULT_ADMIN_ROLE();
+    vm.startPrank(_admin);
+    _token.grantRole(_adminRole, _installer);
+    vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
+    _token.setPolicy(_installer, '');
+    vm.stopPrank();
+    assertEq(_token.policy(), address(_policy));
   }
 
   /*///////////////////////////////////////////////////////////////
@@ -359,33 +417,30 @@ contract ERCXXXXIntegrationTest is Helpers {
     vm.stopPrank();
   }
 
-  function test_AReplacementSeededWithTheTrueCountLetsAHolderExit() public {
+  function test_AReplacementInstalledWithTheHolderListLetsAHolderExit() public {
     ExamplePolicy _second = _secondPolicy();
-    uint256 _trueCount = _policy.holderCount(); // 2: actors[0] and actors[1]; read before the prank
-    vm.prank(_admin);
-    _second.seedHolderCount(_trueCount);
-    _install(address(_second));
+    _installWithHolders(address(_second), _everyActor());
+    assertEq(_second.holderCount(), 2); // actors[0] and actors[1]
 
     vm.prank(_actors[0]);
     _token.transfer(_actors[1], 1000); // a full exit to an existing holder
     assertEq(_second.holderCount(), 1);
   }
 
-  /// @notice Why the seed exists: an unseeded replacement starts at zero and underflows on the first full exit
-  function test_AnUnseededReplacementBlocksAFullExit() public {
-    _install(address(_secondPolicy()));
-    vm.prank(_actors[0]);
-    vm.expectRevert(stdError.arithmeticError);
-    _token.transfer(_actors[1], 1000);
+  /// @notice A replacement that is not given the holders fails closed when it is installed, not at the first exit
+  function test_AReplacementInstalledWithoutTheHolderListReverts() public {
+    ExamplePolicy _second = _secondPolicy();
+    uint256 _supply = _token.totalSupply();
+    vm.prank(_admin);
+    vm.expectRevert(abi.encodeWithSelector(IExamplePolicy.ExamplePolicy_HoldersIncomplete.selector, 0, _supply));
+    _token.setPolicy(address(_second), abi.encode(new address[](0)));
+    assertEq(_token.policy(), address(_policy));
   }
 
-  /// @notice A→B→A, steps 1–3: B is installed with the true count, then two holders arrive that A never sees
+  /// @notice A→B→A, steps 1–3: B is installed with the holders, then two holders arrive that A never sees
   function _swapAwayAndMintTwoHolders() internal returns (ExamplePolicy _b) {
     _b = _secondPolicy();
-    uint256 _trueCount = _policy.holderCount(); // 2; read before the prank
-    vm.prank(_admin);
-    _b.seedHolderCount(_trueCount);
-    _install(address(_b));
+    _installWithHolders(address(_b), _everyActor());
     vm.startPrank(_minter);
     _token.mint(_actors[2], 10);
     _token.mint(_actors[3], 10);
@@ -393,30 +448,12 @@ contract ERCXXXXIntegrationTest is Helpers {
     assertEq(_b.holderCount(), 4);
   }
 
-  /// @notice Reinstalling is a new installation: without a reseed, A's count is stale and its cap admits too many
-  function test_AReinstalledPolicyWithoutAReseedAdmitsHoldersPastTheCap() public {
+  /// @notice Reinstalling is an installation: A counts again, so its cap holds
+  function test_AReinstalledPolicyCountsAgain() public {
     _swapAwayAndMintTwoHolders();
     vm.prank(_admin);
     _policy.setCap(4);
-    _install(address(_policy));
-    assertEq(_policy.holderCount(), 2); // stale: A saw neither mint
-
-    address _fifth = makeAddr('fifth');
-    vm.prank(_admin);
-    _policy.setAllowlisted(_fifth, true);
-    vm.prank(_minter);
-    _token.mint(_fifth, 10); // admitted: 2 + 1 <= 4, yet five accounts now hold the token
-    assertEq(_policy.holderCount(), 3);
-  }
-
-  function test_AReinstalledPolicyReseededWithTheTrueCountEnforcesTheCap() public {
-    ExamplePolicy _b = _swapAwayAndMintTwoHolders();
-    uint256 _trueCount = _b.holderCount(); // 4; read before the prank
-    vm.startPrank(_admin);
-    _policy.setCap(4);
-    _policy.seedHolderCount(_trueCount); // allowed: the token consults B, not A
-    vm.stopPrank();
-    _install(address(_policy));
+    _installWithHolders(address(_policy), _everyActor());
     assertEq(_policy.holderCount(), 4);
 
     address _fifth = makeAddr('fifth');
@@ -432,87 +469,59 @@ contract ERCXXXXIntegrationTest is Helpers {
     assertEq(_policy.holderCount(), 3);
   }
 
-  /**
-   * @notice The snapshot window: governance reads the count (2), a holder arrives before the batch runs (3 now), then
-   *         a policy B with a cap of 3 is seeded and installed in one call by `_helper`
-   */
-  function _snapshotThenAHolderArrives()
-    internal
-    returns (SeedAndInstall _helper, ExamplePolicy _b, uint256 _snapshot)
-  {
-    _snapshot = _policy.holderCount(); // 2, read when the batch is prepared
-    _helper = new SeedAndInstall();
-    _b = _secondPolicy();
-    bytes32 _adminRole = _token.DEFAULT_ADMIN_ROLE();
-    vm.startPrank(_admin);
-    _b.setCap(3);
-    _b.transferOwnership(address(_helper));
-    _token.grantRole(_adminRole, address(_helper));
-    vm.stopPrank();
-
-    vm.prank(_actors[0]);
-    _token.transfer(_actors[2], 10); // a new holder, before the batch executes
-    assertEq(_policy.holderCount(), 3);
-  }
-
-  /// @notice Batching a count read off-chain closes the seed-to-install gap, not the snapshot window
-  function test_WhenAHolderArrivesBeforeTheBatch_AnOffChainSeedIsStale() public {
-    (SeedAndInstall _helper, ExamplePolicy _b, uint256 _snapshot) = _snapshotThenAHolderArrives();
-    _helper.seedAndInstall(address(_token), address(_b), _snapshot);
-    assertEq(_b.holderCount(), 2); // three accounts hold the token
-
-    vm.prank(_minter);
-    _token.mint(_actors[3], 10); // admitted: 2 + 1 <= 3, yet four accounts now hold the token
-    assertEq(_b.holderCount(), 3);
-  }
-
-  /// @notice Reading the count on-chain in the installing call closes the snapshot window
-  function test_WhenAHolderArrivesBeforeTheBatch_AnOnChainReadInstallsTheTrueCount() public {
-    (SeedAndInstall _helper, ExamplePolicy _b,) = _snapshotThenAHolderArrives();
-    _helper.seedFromAndInstall(address(_token), address(_b), address(_policy));
-    assertEq(_b.holderCount(), 3);
-
-    bytes32 _maxHolders = _b.MAX_HOLDERS();
-    vm.prank(_minter);
-    vm.expectRevert(abi.encodeWithSelector(IERCXXXX.ERCXXXXPolicyRejected.selector, _maxHolders));
-    _token.mint(_actors[3], 10);
-  }
-
-  /// @notice A holder list fixed when the batch was prepared fails closed when an unlisted holder arrives first
-  function test_WhenAHolderArrivesBeforeTheBatch_AListThatMissesItReverts() public {
-    (SeedAndInstall _helper, ExamplePolicy _b,) = _snapshotThenAHolderArrives();
-    address[] memory _listed = new address[](2); // the holders when the batch was prepared
-    _listed[0] = _actors[0];
-    _listed[1] = _actors[1];
-    _listed = _ascending(_listed);
+  /// @notice A list of the holders A knew of misses the two that arrived under B, so A cannot come back with it
+  function test_WhenAReinstallMissesAHolder_ItRevertsAndTheOtherPolicyStays() public {
+    ExamplePolicy _b = _swapAwayAndMintTwoHolders();
+    address[] memory _stale = new address[](2);
+    _stale[0] = _actors[0];
+    _stale[1] = _actors[1];
     uint256 _sum = _token.balanceOf(_actors[0]) + _token.balanceOf(_actors[1]);
     uint256 _supply = _token.totalSupply();
 
+    vm.prank(_admin);
     vm.expectRevert(abi.encodeWithSelector(IExamplePolicy.ExamplePolicy_HoldersIncomplete.selector, _sum, _supply));
-    _helper.seedFromHoldersAndInstall(address(_token), address(_b), _listed);
+    _token.setPolicy(address(_policy), abi.encode(_ascending(_stale)));
+    assertEq(_token.policy(), address(_b));
+  }
+
+  /**
+   * @notice The snapshot window: the list is made with two holders, a third arrives before the installation runs, and
+   *         the policy to install has a cap of 3
+   */
+  function _aHolderArrivesAfterTheListIsMade() internal returns (ExamplePolicy _b) {
+    _b = _secondPolicy();
+    vm.prank(_admin);
+    _b.setCap(3);
+    vm.prank(_actors[0]);
+    _token.transfer(_actors[2], 10); // a new holder, before the installation executes
+    assertEq(_policy.holderCount(), 3);
+  }
+
+  /// @notice A holder list fixed in advance fails closed when an unlisted holder arrives first
+  function test_WhenAHolderArrivesBeforeTheInstallation_AListThatMissesItReverts() public {
+    ExamplePolicy _b = _aHolderArrivesAfterTheListIsMade();
+    address[] memory _listed = new address[](2); // the holders when the list was made
+    _listed[0] = _actors[0];
+    _listed[1] = _actors[1];
+    uint256 _sum = _token.balanceOf(_actors[0]) + _token.balanceOf(_actors[1]);
+    uint256 _supply = _token.totalSupply();
+
+    vm.prank(_admin);
+    vm.expectRevert(abi.encodeWithSelector(IExamplePolicy.ExamplePolicy_HoldersIncomplete.selector, _sum, _supply));
+    _token.setPolicy(address(_b), abi.encode(_ascending(_listed)));
     assertEq(_token.policy(), address(_policy)); // nothing was installed
   }
 
   /// @notice A list that also names accounts that may hold by then installs the true count, however old it is
-  function test_WhenAHolderArrivesBeforeTheBatch_AListCoveringItInstallsTheTrueCount() public {
-    (SeedAndInstall _helper, ExamplePolicy _b,) = _snapshotThenAHolderArrives();
-    address[] memory _listed = new address[](4); // every allowlisted account; actors[3] holds nothing
-    for (uint256 _i; _i < 4; ++_i) {
-      _listed[_i] = _actors[_i];
-    }
-    _helper.seedFromHoldersAndInstall(address(_token), address(_b), _ascending(_listed));
+  function test_WhenAHolderArrivesBeforeTheInstallation_AListCoveringItInstallsTheTrueCount() public {
+    ExamplePolicy _b = _aHolderArrivesAfterTheListIsMade();
+    _installWithHolders(address(_b), _everyActor()); // actors[3] holds nothing
     assertEq(_b.holderCount(), 3);
 
     bytes32 _maxHolders = _b.MAX_HOLDERS();
     vm.prank(_minter);
     vm.expectRevert(abi.encodeWithSelector(IERCXXXX.ERCXXXXPolicyRejected.selector, _maxHolders));
     _token.mint(_actors[3], 10);
-  }
-
-  function test_OnceInstalled_ThePolicyCannotBeSeeded() public {
-    vm.prank(_admin);
-    vm.expectRevert(IExamplePolicy.ExamplePolicy_AlreadyInstalled.selector);
-    _policy.seedHolderCount(5);
   }
 
   /*///////////////////////////////////////////////////////////////

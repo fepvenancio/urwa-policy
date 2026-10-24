@@ -6,7 +6,6 @@ import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {ERC165} from '@openzeppelin/contracts/utils/introspection/ERC165.sol';
 import {IERC165} from '@openzeppelin/contracts/utils/introspection/IERC165.sol';
 
-import {IERCXXXX} from 'interfaces/IERCXXXX.sol';
 import {IERCXXXXPolicy, TRANSFER_OK} from 'interfaces/IERCXXXXPolicy.sol';
 import {IExamplePolicy} from 'interfaces/IExamplePolicy.sol';
 
@@ -57,49 +56,6 @@ contract ExamplePolicy is ERC165, Ownable, IExamplePolicy {
   //////////////////////////////////////////////////////////////*/
 
   /// @inheritdoc IExamplePolicy
-  function seedHolderCount(
-    uint256 _count
-  ) external onlyOwner {
-    _revertIfInstalled();
-    emit HolderCountSeeded(holderCount, _count);
-    holderCount = _count;
-  }
-
-  /**
-   * @inheritdoc IExamplePolicy
-   * @dev Each entry costs a cold read of its balance, whether or not it holds tokens. Measured 2026-10-22 on
-   *      `ExampleToken`: about 3,870 gas per entry for a direct call, and about 4,150 inside a `TimelockController` batch
-   *      that also installs the policy. Under the per-transaction gas cap of 16,777,216 (EIP-7825), 4,320 entries fit
-   *      in a direct call and 3,990 in the batch; 4,330 and 4,000 did not
-   */
-  function seedHolderCountFromHolders(
-    address[] calldata _holders
-  ) external onlyOwner {
-    _revertIfInstalled();
-    // The sum, the count and the previous address start at zero.
-    // slither-disable-start uninitialized-local
-    uint256 _sum;
-    uint256 _count;
-    address _previous;
-    // slither-disable-end uninitialized-local
-    uint256 _length = _holders.length;
-    for (uint256 _i; _i < _length; ++_i) {
-      address _holder = _holders[_i];
-      if (_holder <= _previous) revert ExamplePolicy_HoldersNotAscending(_i);
-      _previous = _holder;
-      uint256 _balance = IERC20(TOKEN).balanceOf(_holder);
-      if (_balance > 0) {
-        _sum += _balance;
-        ++_count;
-      }
-    }
-    uint256 _supply = IERC20(TOKEN).totalSupply();
-    if (_sum != _supply) revert ExamplePolicy_HoldersIncomplete(_sum, _supply);
-    emit HolderCountSeeded(holderCount, _count);
-    holderCount = _count;
-  }
-
-  /// @inheritdoc IExamplePolicy
   function setAllowlisted(
     address _account,
     bool _allowed
@@ -134,6 +90,48 @@ contract ExamplePolicy is ERC165, Ownable, IExamplePolicy {
     if (_context.from != address(0) && IERC20(TOKEN).balanceOf(_context.from) == 0) holderCount -= 1;
     // slither-disable-next-line incorrect-equality
     if (_context.to != address(0) && IERC20(TOKEN).balanceOf(_context.to) == _context.amount) holderCount += 1;
+  }
+
+  /**
+   * @inheritdoc IERCXXXXPolicy
+   * @dev `_data` is `abi.encode(address[])`: accounts in strictly ascending order whose balances add up to
+   *      `totalSupply()`. Then no account outside the list holds tokens, so the count is exact when the call runs,
+   *      however old the list is. Only non-zero balances count, so the list may name accounts that hold nothing. The
+   *      count is set on every call, a reinstall included. `_previousPolicy` is unused: the count never comes from
+   *      another contract. Each entry costs a cold read of its balance. Measured 2026-10-24 on `ExampleToken`,
+   *      installing a freshly deployed policy: about 3,900 gas per entry when the admin calls `setPolicy` directly,
+   *      and about 4,210 when a `TimelockController` executes that call. Under the per-transaction gas cap of
+   *      16,777,216 (EIP-7825), 4,260 entries fit in the direct call and 3,950 through the timelock; 4,270 and 3,960
+   *      did not
+   */
+  function onInstall(
+    address _token,
+    address,
+    bytes calldata _data
+  ) external {
+    if (msg.sender != TOKEN || _token != TOKEN) revert ExamplePolicy_OnlyToken(msg.sender);
+    address[] memory _holders = abi.decode(_data, (address[]));
+    // The sum, the count and the previous address start at zero.
+    // slither-disable-start uninitialized-local
+    uint256 _sum;
+    uint256 _count;
+    address _previous;
+    // slither-disable-end uninitialized-local
+    uint256 _length = _holders.length;
+    for (uint256 _i; _i < _length; ++_i) {
+      address _holder = _holders[_i];
+      if (_holder <= _previous) revert ExamplePolicy_HoldersNotAscending(_i);
+      _previous = _holder;
+      uint256 _balance = IERC20(TOKEN).balanceOf(_holder);
+      if (_balance > 0) {
+        _sum += _balance;
+        ++_count;
+      }
+    }
+    uint256 _supply = IERC20(TOKEN).totalSupply();
+    if (_sum != _supply) revert ExamplePolicy_HoldersIncomplete(_sum, _supply);
+    emit HolderCountSeeded(holderCount, _count);
+    holderCount = _count;
   }
 
   /**
@@ -213,14 +211,5 @@ contract ExamplePolicy is ERC165, Ownable, IExamplePolicy {
     // slither-disable-next-line incorrect-equality
     bool _senderLeaves = _context.from != address(0) && IERC20(TOKEN).balanceOf(_context.from) == _context.amount;
     _admits = holderCount + (_senderLeaves ? 0 : 1) <= cap;
-  }
-
-  /**
-   * @notice Rejects a seed once the token consults this policy
-   * @dev Seeding is allowed before the token exists, or while it consults another policy. Once installed,
-   *      `afterTransfer` keeps the count
-   */
-  function _revertIfInstalled() internal view {
-    if (TOKEN.code.length != 0 && IERCXXXX(TOKEN).policy() == address(this)) revert ExamplePolicy_AlreadyInstalled();
   }
 }

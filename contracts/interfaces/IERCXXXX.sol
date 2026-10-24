@@ -13,7 +13,7 @@ interface IERCXXXX is IERC165 {
   //////////////////////////////////////////////////////////////*/
 
   /**
-   * @notice Emitted whenever the policy changes, including the first installation
+   * @notice Emitted on every installation, including the first
    * @param _previousPolicy The policy before the change; address(0) on the first installation
    * @param _newPolicy The policy after the change
    */

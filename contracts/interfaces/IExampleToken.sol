@@ -8,7 +8,8 @@ import {IERCXXXX} from 'interfaces/IERCXXXX.sol';
  * @title IExampleToken
  * @notice Example ERC-20 token that implements ERC-7943 through an ERC-XXXX policy
  * @dev Non-normative and not audited. Enforcement (`forcedTransfer`, `setFrozenTokens`) needs ENFORCER_ROLE, issuance
- *      MINTER_ROLE, pausing PAUSER_ROLE, and replacing the policy DEFAULT_ADMIN_ROLE
+ *      MINTER_ROLE, pausing PAUSER_ROLE, and installing the policy DEFAULT_ADMIN_ROLE. The token starts without a
+ *      policy and rejects every movement until one is installed
  */
 interface IExampleToken is IERC7943Fungible, IERCXXXX {
   /*///////////////////////////////////////////////////////////////
@@ -51,12 +52,16 @@ interface IExampleToken is IERC7943Fungible, IERCXXXX {
   function pause() external;
 
   /**
-   * @notice Replaces the policy
-   * @dev Only DEFAULT_ADMIN_ROLE. The policy must advertise the ERC-XXXX policy interface. Emits `PolicyChanged`
+   * @notice Installs a policy, which may be the current one, and calls its `onInstall`
+   * @dev Only DEFAULT_ADMIN_ROLE. The policy must advertise the ERC-XXXX policy interface. Emits `PolicyChanged`, sets
+   *      the policy, then calls `onInstall`; if that reverts, the installation reverts. No movement or installation can
+   *      start while `onInstall` runs
    * @param _newPolicy The new policy
+   * @param _data Passed to the policy's `onInstall` unchanged
    */
   function setPolicy(
-    address _newPolicy
+    address _newPolicy,
+    bytes calldata _data
   ) external;
 
   /**

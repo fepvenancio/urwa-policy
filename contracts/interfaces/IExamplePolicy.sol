@@ -6,9 +6,8 @@ import {IERCXXXXPolicy} from 'interfaces/IERCXXXXPolicy.sol';
 /**
  * @title IExamplePolicy
  * @notice Example ERC-XXXX policy for one ERC-20 token: an allowlist and a holder cap
- * @dev Non-normative and not audited. Holders are accounts with a non-zero balance. The count starts at zero; for a
- *      token that already has holders, the owner seeds it with `seedHolderCount` before installation. A cap of zero
- *      admits no holder
+ * @dev Non-normative and not audited. Holders are accounts with a non-zero balance. `onInstall` sets the count from a
+ *      list of holders on every installation, and `afterTransfer` keeps it. A cap of zero admits no holder
  */
 interface IExamplePolicy is IERCXXXXPolicy {
   /*///////////////////////////////////////////////////////////////
@@ -29,18 +28,15 @@ interface IExamplePolicy is IERCXXXXPolicy {
   event CapSet(uint256 _cap);
 
   /**
-   * @notice Emitted when the owner seeds the holder count before the policy is installed
+   * @notice Emitted when `onInstall` sets the holder count
    * @param _oldCount The count before
-   * @param _newCount The seeded count
+   * @param _newCount The count set
    */
   event HolderCountSeeded(uint256 _oldCount, uint256 _newCount);
 
   /*///////////////////////////////////////////////////////////////
                             ERRORS
   //////////////////////////////////////////////////////////////*/
-
-  /// @notice Thrown when the holder count is seeded after the token has installed this policy
-  error ExamplePolicy_AlreadyInstalled();
 
   /**
    * @notice Thrown when the listed balances do not add up to the total supply: an account outside the list holds tokens
@@ -56,7 +52,7 @@ interface IExamplePolicy is IERCXXXXPolicy {
   error ExamplePolicy_HoldersNotAscending(uint256 _index);
 
   /**
-   * @notice Thrown when `afterTransfer` is called by anyone but the token, or for another token
+   * @notice Thrown when `afterTransfer` or `onInstall` is called by anyone but the token, or for another token
    * @param _caller The caller
    */
   error ExamplePolicy_OnlyToken(address _caller);
@@ -67,32 +63,6 @@ interface IExamplePolicy is IERCXXXXPolicy {
   /*///////////////////////////////////////////////////////////////
                             LOGIC
   //////////////////////////////////////////////////////////////*/
-
-  /**
-   * @notice Sets the holder count to the token's current number of holders, before the token installs this policy
-   * @dev Only the owner, and only while `TOKEN` does not consult this policy. Once installed, the count follows real
-   *      movements through `afterTransfer`. Seed before every installation, including a reinstall after another
-   *      policy: the policy sees no movements while it is not installed. Seeding and installing in one transaction
-   *      closes the gap between them, but a count read off-chain can be stale by the time the batch runs: read it
-   *      on-chain in the same transaction, for example from the outgoing policy, or use `seedHolderCountFromHolders`
-   * @param _count The number of accounts holding a non-zero balance
-   */
-  function seedHolderCount(
-    uint256 _count
-  ) external;
-
-  /**
-   * @notice Sets the holder count from a list of accounts whose balances add up to the total supply, before the token
-   *         installs this policy
-   * @dev Only the owner, and only while `TOKEN` does not consult this policy. `TOKEN` must exist. If the listed balances
-   *      add up to `totalSupply()`, no account outside the list holds tokens, so the count is exact when the call runs,
-   *      however old the list is. Only non-zero balances count, so the list may name accounts that hold nothing yet.
-   *      Strictly ascending order rules out counting an account twice
-   * @param _holders The accounts, in strictly ascending order
-   */
-  function seedHolderCountFromHolders(
-    address[] calldata _holders
-  ) external;
 
   /**
    * @notice Adds an account to or removes it from the allowlist

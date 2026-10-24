@@ -5,7 +5,6 @@ import {Ownable} from '@openzeppelin/contracts/access/Ownable.sol';
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {IERC165} from '@openzeppelin/contracts/utils/introspection/IERC165.sol';
 
-import {IERCXXXX} from 'interfaces/IERCXXXX.sol';
 import {IERCXXXXPolicy, TRANSFER_OK} from 'interfaces/IERCXXXXPolicy.sol';
 import {IExamplePolicy} from 'interfaces/IExamplePolicy.sol';
 
@@ -127,48 +126,7 @@ contract ExamplePolicyUnitTest is Helpers {
   }
 
   /*///////////////////////////////////////////////////////////////
-                            SEEDING THE HOLDER COUNT
-  //////////////////////////////////////////////////////////////*/
-
-  function _installed(
-    bool _isInstalled
-  ) internal {
-    address _current = _isInstalled ? address(_policy) : _stranger;
-    vm.mockCall(_token, abi.encodeCall(IERCXXXX.policy, ()), abi.encode(_current));
-  }
-
-  function test_WhenTheOwnerSeedsBeforeInstallation_ItSetsTheCountAndEmits() public {
-    _installed(false);
-    vm.expectEmit(address(_policy));
-    emit IExamplePolicy.HolderCountSeeded(0, 5);
-    vm.prank(_owner);
-    _policy.seedHolderCount(5);
-    assertEq(_policy.holderCount(), 5);
-  }
-
-  function test_WhenTheTokenDoesNotExistYet_SeedingIsAllowed() public {
-    ExamplePolicy _early = new ExamplePolicy(makeAddr('future token'), _owner, 10);
-    vm.prank(_owner);
-    _early.seedHolderCount(3);
-    assertEq(_early.holderCount(), 3);
-  }
-
-  function test_WhenTheTokenHasInstalledThePolicy_SeedingReverts() public {
-    _installed(true);
-    vm.prank(_owner);
-    vm.expectRevert(IExamplePolicy.ExamplePolicy_AlreadyInstalled.selector);
-    _policy.seedHolderCount(5);
-  }
-
-  function test_WhenANonOwnerSeeds_ItReverts() public {
-    _installed(false);
-    vm.prank(_stranger);
-    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _stranger));
-    _policy.seedHolderCount(5);
-  }
-
-  /*///////////////////////////////////////////////////////////////
-                    SEEDING FROM A HOLDER LIST
+                            INSTALLATION
   //////////////////////////////////////////////////////////////*/
 
   address internal constant _FIRST = address(0x1001);
@@ -203,8 +161,32 @@ contract ExamplePolicyUnitTest is Helpers {
     vm.mockCall(_token, abi.encodeCall(IERC20.totalSupply, ()), abi.encode(_amount));
   }
 
-  function test_WhenTheListCoversTheSupply_ItCountsTheNonZeroBalancesAndEmits() public {
-    _installed(false);
+  /**
+   * @notice Installs the policy as the token would, with a holder list
+   * @param _list The holder list
+   */
+  function _onInstall(
+    address[] memory _list
+  ) internal {
+    vm.prank(_token);
+    _policy.onInstall(_token, address(0), abi.encode(_list));
+  }
+
+  function test_OnInstall_WhenTheCallerIsNotTheToken_ItReverts() public {
+    _supply(0);
+    vm.prank(_stranger);
+    vm.expectRevert(abi.encodeWithSelector(IExamplePolicy.ExamplePolicy_OnlyToken.selector, _stranger));
+    _policy.onInstall(_token, address(0), abi.encode(new address[](0)));
+  }
+
+  function test_OnInstall_WhenTheTokenArgumentIsAnotherToken_ItReverts() public {
+    _supply(0);
+    vm.prank(_token);
+    vm.expectRevert(abi.encodeWithSelector(IExamplePolicy.ExamplePolicy_OnlyToken.selector, _token));
+    _policy.onInstall(_stranger, address(0), abi.encode(new address[](0)));
+  }
+
+  function test_OnInstall_WhenTheListCoversTheSupply_ItCountsTheNonZeroBalancesAndEmits() public {
     _balance(_FIRST, 5);
     _balance(_SECOND, 0); // listed, holds nothing
     _balance(_THIRD, 7);
@@ -212,16 +194,14 @@ contract ExamplePolicyUnitTest is Helpers {
     vm.expectCall(_token, abi.encodeCall(IERC20.totalSupply, ()), 1);
     vm.expectEmit(address(_policy));
     emit IExamplePolicy.HolderCountSeeded(0, 2);
-    vm.prank(_owner);
-    _policy.seedHolderCountFromHolders(_holders(_FIRST, _SECOND, _THIRD));
+    _onInstall(_holders(_FIRST, _SECOND, _THIRD));
     assertEq(_policy.holderCount(), 2);
   }
 
   /// @notice Any split of the supply among the listed accounts counts exactly, including after trades and full exits
-  function testFuzz_WhenTheListCoversTheSupply_TheCountIsExact(
+  function testFuzz_OnInstall_WhenTheListCoversTheSupply_TheCountIsExact(
     uint256[3] memory _amounts
   ) public {
-    _installed(false);
     address[] memory _list = _holders(_FIRST, _SECOND, _THIRD);
     uint256 _sum;
     uint256 _expected;
@@ -232,25 +212,22 @@ contract ExamplePolicyUnitTest is Helpers {
       if (_amounts[_i] > 0) ++_expected;
     }
     _supply(_sum);
-    vm.prank(_owner);
-    _policy.seedHolderCountFromHolders(_list);
+    _onInstall(_list);
     assertEq(_policy.holderCount(), _expected);
   }
 
-  function test_WhenAnAccountOutsideTheListHoldsTokens_TheListSeedReverts() public {
-    _installed(false);
+  function test_OnInstall_WhenAnAccountOutsideTheListHoldsTokens_ItReverts() public {
     _balance(_FIRST, 5);
     _balance(_SECOND, 3);
     _balance(_THIRD, 0);
     _supply(9); // one unit is held outside the list
-    vm.prank(_owner);
+    vm.prank(_token);
     vm.expectRevert(abi.encodeWithSelector(IExamplePolicy.ExamplePolicy_HoldersIncomplete.selector, 8, 9));
-    _policy.seedHolderCountFromHolders(_holders(_FIRST, _SECOND, _THIRD));
+    _policy.onInstall(_token, address(0), abi.encode(_holders(_FIRST, _SECOND, _THIRD)));
   }
 
   /// @notice Without the order check, listing the largest holder twice would add up to the supply and miss the rest
-  function test_WhenTheListIsNotStrictlyAscending_TheListSeedReverts() public {
-    _installed(false);
+  function test_OnInstall_WhenTheListIsNotStrictlyAscending_ItReverts() public {
     _balance(_FIRST, 1);
     _balance(_SECOND, 1);
     _balance(_THIRD, 2);
@@ -259,49 +236,30 @@ contract ExamplePolicyUnitTest is Helpers {
     _repeated[0] = _THIRD;
     _repeated[1] = _THIRD; // 2 + 2 == the supply
     bytes4 _selector = IExamplePolicy.ExamplePolicy_HoldersNotAscending.selector;
-    vm.startPrank(_owner);
+    vm.startPrank(_token);
     vm.expectRevert(abi.encodeWithSelector(_selector, 1));
-    _policy.seedHolderCountFromHolders(_repeated);
+    _policy.onInstall(_token, address(0), abi.encode(_repeated));
     vm.expectRevert(abi.encodeWithSelector(_selector, 1));
-    _policy.seedHolderCountFromHolders(_holders(_SECOND, _FIRST, _THIRD));
+    _policy.onInstall(_token, address(0), abi.encode(_holders(_SECOND, _FIRST, _THIRD)));
     vm.expectRevert(abi.encodeWithSelector(_selector, 0));
-    _policy.seedHolderCountFromHolders(new address[](1)); // the zero address
+    _policy.onInstall(_token, address(0), abi.encode(new address[](1))); // the zero address
     vm.stopPrank();
   }
 
-  function test_WhenTheTokenHasInstalledThePolicy_TheListSeedReverts() public {
-    _installed(true);
-    vm.prank(_owner);
-    vm.expectRevert(IExamplePolicy.ExamplePolicy_AlreadyInstalled.selector);
-    _policy.seedHolderCountFromHolders(new address[](0));
-  }
-
-  function test_WhenANonOwnerSeedsFromAList_ItReverts() public {
-    _installed(false);
-    vm.prank(_stranger);
-    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, _stranger));
-    _policy.seedHolderCountFromHolders(new address[](0));
-  }
-
-  /// @notice A reseed reports the count it replaces, whichever seed sets it
-  function test_WhenTheCountIsReseeded_TheEventCarriesTheOldCount() public {
-    _installed(false);
-    vm.prank(_owner);
-    _policy.seedHolderCount(5);
-
+  /// @notice Every installation sets the count again, and the event reports the count it replaces
+  function test_OnInstall_WhenCalledAgain_ItSetsTheCountAgain() public {
     _balance(_FIRST, 4);
     _balance(_SECOND, 0);
     _balance(_THIRD, 6);
     _supply(10);
-    vm.expectEmit(address(_policy));
-    emit IExamplePolicy.HolderCountSeeded(5, 2);
-    vm.prank(_owner);
-    _policy.seedHolderCountFromHolders(_holders(_FIRST, _SECOND, _THIRD));
+    _onInstall(_holders(_FIRST, _SECOND, _THIRD));
 
+    _balance(_SECOND, 3);
+    _supply(13);
     vm.expectEmit(address(_policy));
-    emit IExamplePolicy.HolderCountSeeded(2, 7);
-    vm.prank(_owner);
-    _policy.seedHolderCount(7);
+    emit IExamplePolicy.HolderCountSeeded(2, 3);
+    _onInstall(_holders(_FIRST, _SECOND, _THIRD));
+    assertEq(_policy.holderCount(), 3);
   }
 
   /*///////////////////////////////////////////////////////////////

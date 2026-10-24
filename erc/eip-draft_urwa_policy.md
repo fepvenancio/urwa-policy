@@ -16,7 +16,7 @@ This ERC defines how an [ERC-7943](./eip-7943.md) token delegates its compliance
 
 For every movement of its balances, the token builds a `TransferContext`. The context is labelled with the authority under which the movement happens, determined from on-chain facts. The token asks the policy for a `bytes32` decision before any balance changes. One fixed non-zero value permits; every other value, zero included, rejects.
 
-The same policy answers the token's ERC-7943 `canSend`, `canReceive` and `canTransfer` checks. The token evaluates `canTransfer` exactly as it evaluates the movements that check predicts. A policy that keeps state observes completed movements through an authenticated callback.
+The same policy answers the token's ERC-7943 `canSend`, `canReceive` and `canTransfer` checks. The token evaluates `canTransfer` exactly as it evaluates the movements that check predicts. A policy that keeps state observes completed movements through an authenticated callback. The token also calls the policy on every installation, so that it can initialise that state.
 
 ## Motivation
 
@@ -52,6 +52,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 - **Directed by the holder**: the movement's accounts and amount follow from an authorisation the holder gave on-chain. That authorisation may be a call to the token, an allowance or operator approval, a signature the token verifies, or a request the token records. A recorded request directs every destination that it, or the token's documented request lifecycle (fulfilment, claim, rejection, cancellation), names, whoever made the request.
 - **The token's own checks**: the permissioned conditions the token applies to a movement outside its policy: the frozen amount that ERC-7943 defines, a pause if the token has one, and any account-level conditions the token adds to `canSend` or `canReceive`, such as a frozen wallet. They exclude the base standard's own validations, such as ownership, allowances and approvals, and access control on the functions that cause movements.
 - **Check**: `checkSend`, `checkReceive` or `checkTransfer`. A check **permits** when it returns `TRANSFER_OK` and **rejects** when it returns anything else.
+- **Installation**: each time the token sets the policy it consults, including the first time, a policy it consulted before, and the policy it already consults.
 
 ### Interfaces
 
@@ -124,6 +125,19 @@ interface IERCXXXXPolicy is IERC165 {
   ) external;
 
   /**
+   * @notice Initialises the policy for a token that installs it
+   * @dev Called by the token on every installation, once its `policy()` returns this policy. Only `_token` may call it
+   * @param _token The token installing the policy
+   * @param _previousPolicy The policy the token consulted until now; address(0) on the first installation
+   * @param _data Data from the account that installs the policy, passed on unchanged
+   */
+  function onInstall(
+    address _token,
+    address _previousPolicy,
+    bytes calldata _data
+  ) external;
+
+  /**
    * @notice Account-level eligibility to receive `_token`; backs the token's ERC-7943 `canReceive`
    * @param _token The token
    * @param _account The account
@@ -173,7 +187,7 @@ interface IERCXXXX is IERC165 {
   //////////////////////////////////////////////////////////////*/
 
   /**
-   * @notice Emitted whenever the policy changes, including the first installation
+   * @notice Emitted on every installation, including the first
    * @param _previousPolicy The policy before the change; address(0) on the first installation
    * @param _newPolicy The policy after the change
    */
@@ -210,10 +224,11 @@ interface IERCXXXX is IERC165 {
 | `checkTransfer` | `checkTransfer((address,address,address,uint256,uint256,address,uint8,bytes))` | `0x64a1a08e` |
 | `wantsAfterTransfer` | `wantsAfterTransfer()` | `0x38bff1a5` |
 | `afterTransfer` | `afterTransfer((address,address,address,uint256,uint256,address,uint8,bytes))` | `0x2595b359` |
+| `onInstall` | `onInstall(address,address,bytes)` | `0x820203aa` |
 | `policy` | `policy()` | `0x0505c8c9` |
 
 The [ERC-165](./eip-165.md) identifiers are:
-- `0x1eb76933` for `IERCXXXXPolicy`, the XOR of its five selectors;
+- `0x9cb56a99` for `IERCXXXXPolicy`, the XOR of its six selectors;
 - `0x0505c8c9` for `IERCXXXX`.
 
 ### Decisions and reason codes
@@ -280,7 +295,7 @@ The set of kinds is closed. The encodings are `TRANSFER = 0`, `EXECUTED = 1`, `F
 11. When `policy()` returns `address(0)`, the token MUST reject every movement.
 12. A `TRANSFER`, `EXECUTED`, `MINT` or `BURN` movement MUST NOT happen unless both the token's own checks and the policy permit it. The token's account-level conditions apply to `from` as for `canSend`, and to `to` as for `canReceive`. For `TRANSFER`, `MINT` and `BURN`, the token's own checks MUST NOT depend on `msg.sender`, `operator`, `tx.origin`, the remaining gas or any other transaction context. Nor may they depend on state the operation changes before the check, other than through earlier movements of the same operation.
 13. For `FORCED` movements, the token applies its own checks as ERC-7943 specifies for `forcedTransfer` and for permissioned minting and burning. For example, `forcedTransfer` MAY bypass them in single-party permissioned contexts and SHOULD apply them in multi-party ones. If a `FORCED` movement moves frozen tokens, the token MUST first reduce the frozen amount by at least the frozen part of what moves (for a non-fungible token, unfreeze it). It MUST then emit `Frozen`, before the base standard's transfer event.
-14. The token's views of balances, ownership, total supply and frozen amounts MUST NOT revert while a movement is in progress. A policy may read them during `checkTransfer` and `afterTransfer`.
+14. The token's views of balances, ownership, total supply and frozen amounts MUST NOT revert while a movement is in progress or while `onInstall` runs. A policy may read them during `checkTransfer`, `afterTransfer` and `onInstall`.
 
 #### Checks and pre-flights
 
@@ -323,9 +338,13 @@ These rules, together with the policy requirements below, have the following con
 #### Installing a policy
 
 1. `policy()` MUST return the policy the token currently consults.
-2. The token MUST emit `PolicyChanged` whenever the policy changes, including the first installation, where `previousPolicy` is `address(0)`.
-3. The token MUST NOT install a policy that does not return `true` for `supportsInterface(0x1eb76933)`. Who may install a policy is outside this ERC.
+2. The token MUST emit `PolicyChanged` on every installation, including the first, where `previousPolicy` is `address(0)`.
+3. The token MUST NOT install a policy that does not return `true` for `supportsInterface(0x9cb56a99)`. Who may install a policy is outside this ERC.
 4. The token MUST return `true` for `supportsInterface(0x0505c8c9)` and for the identifier of the ERC-7943 interface it implements.
+5. On every installation, once `policy()` returns the new policy, the token MUST call `onInstall` on it with `address(this)`, the policy it consulted until then (`address(0)` on the first installation), and the data supplied by the account that installs the policy, unchanged. If `onInstall` reverts, the installation MUST revert, so the token keeps its previous policy.
+6. An installation MUST NOT depend on the outgoing policy: the token MUST NOT revert it because a call to that policy reverts, or because of what that policy returns.
+7. The token MUST NOT allow a movement or another installation to begin while `onInstall` runs.
+8. The token MUST NOT install a policy before its own code is in place, for example from its constructor, because `onInstall` must be able to read it (token rule 14).
 
 ### Policy requirements
 
@@ -346,8 +365,10 @@ These rules, together with the policy requirements below, have the following con
 10. `afterTransfer` MUST revert unless `msg.sender` equals `_context.token`. A call from one token MUST NOT change state that governs another token's movements. The one exception is a policy that authenticates every token whose movements that state governs, for example through a list of the tokens it serves.
 11. While `afterTransfer` runs, the token's balances are those after the movement. The policy MAY make view calls to the token. It cannot start another movement (token rule 9).
 12. `wantsAfterTransfer` MAY change its answer as the policy's configuration changes. While it returns `false`, the policy MUST NOT depend on receiving `afterTransfer`.
-13. The policy MUST return `true` for `supportsInterface(0x1eb76933)`.
+13. The policy MUST return `true` for `supportsInterface(0x9cb56a99)`.
 14. The policy SHOULD bound the gas its checks consume. A check that runs out of gas rejects the movement, and makes the token's pre-flight return `false`.
+15. `onInstall` MUST revert unless `msg.sender` equals `_token`. A call from one token MUST NOT change state that governs another token's movements, except as policy requirement 10 allows.
+16. On every call, `onInstall` MUST either set all state the policy derives from `_token`'s movements, such as a holder count, or revert. It MUST NOT keep such state from an earlier installation, including an earlier installation on the same token. A policy without such state MAY do nothing in `onInstall`. What it accepts in `_data`, and what it reads on-chain, is up to the policy.
 
 ## Rationale
 
@@ -469,6 +490,24 @@ Four ordering rules keep the callback sound:
 
 `afterTransfer` accepts calls only from the token named in the context. A contract that pretends to be a token can therefore only touch state that governs its own movements.
 
+### Installing a policy
+
+A policy that keeps state derived from movements, such as a holder count, is only correct for one unbroken installation. While another policy is installed, it sees none of the token's movements. Without being told, it cannot know that it was replaced and installed again. `onInstall` tells it on every installation, so a policy can rebuild or verify its state at the moment it goes live, or refuse to go live by reverting.
+
+The call is required of every token, not offered as an extension. A policy can only refuse to go live with stale state if every token that may install it makes the call. A stateless policy implements it as a function that does nothing.
+
+Each call initialises again. A guard that skips initialisation for a token the policy has served before, as one-time initialisers do, would keep the state from the earlier installation, which is the case the call exists for. Mappings cannot be cleared, so a policy can key such state by an installation number that `onInstall` increments.
+
+The token passes `previousPolicy` itself. A policy that copies state from its predecessor, for example from the interim policy of a staged migration (see Security Considerations), then reads the contract the token actually consulted, not an address chosen by whoever prepared the installation. Copying still trusts that contract.
+
+The token makes no call to the outgoing policy. If the outgoing policy could revert its own removal, a broken or hostile policy could keep itself installed. [ERC-7579](./eip-7579.md) names this risk for modules that revert in `onUninstall`.
+
+The token sets the new policy before it calls `onInstall`, so a revert undoes both, and the policy can confirm through `policy()` that it is the one being installed. No movement can begin while `onInstall` runs, so the state it reads cannot change under it.
+
+A token cannot install a policy from its constructor, because the token has no code until the constructor returns and `onInstall` could not read it. Until a policy is installed the token rejects every movement (token rule 11), so a token deployed without one is safe. A token behind a proxy can install from its initializer.
+
+ERC-7579 likewise requires an account to call `onInstall` on every module it installs, with data the installer supplies, and to revert if the call fails. ERC-3643's token interface says `setCompliance` calls the compliance contract's `bindToken`, which receives only the token's address.
+
 ### Reference and deadline are data
 
 Earlier drafts of this interface carried an instruction reference and a deadline as fixed context fields. In the implementation this ERC is extracted from:
@@ -485,13 +524,13 @@ A per-item `canTransfer` cannot predict a whole batch. Integrators that need to 
 
 ### Cost
 
-A movement costs two `STATICCALL`s, `checkTransfer` and `wantsAfterTransfer`, plus one `CALL` when the policy wants the callback. A pre-flight costs one `STATICCALL`.
+A movement costs two `STATICCALL`s, `checkTransfer` and `wantsAfterTransfer`, plus one `CALL` when the policy wants the callback. A pre-flight costs one `STATICCALL`. An installation costs one `CALL` to `onInstall`, plus whatever the policy does in it.
 
 ### What this ERC leaves out
 
 This ERC does not cover:
 - how a policy is composed internally (rule lists, ordering, registries);
-- how a policy is configured;
+- how a policy is configured, and what it accepts in `onInstall`'s data;
 - who may replace a policy.
 
 The implementation this ERC is extracted from composes its policy from at most 16 rules. They run in a fixed order, the first rejection is returned, and each rule keys its state by token, so one deployment of a rule serves many tokens. Other compositions are equally valid, provided they meet policy requirement 8.
@@ -520,6 +559,7 @@ An adapter can present an ERC-3643 token's compliance contract and identity regi
 
   ERC-3643 has no holder-directed burn. Its agent burns bypass all eligibility checks; they are `FORCED` with a zero `to`, and the adapter permits them. For a `BURN`, which an ERC-3643 token does not produce, the adapter applies `checkSend`, as policy requirement 4 demands.
 - **`afterTransfer`** calls the compliance contract's `created` for movements from zero, `destroyed` for movements to zero, and `transferred` otherwise. This works only where the compliance contract accepts the adapter as its caller.
+- **`onInstall`**: ERC-3643 defines no call that rebuilds a compliance contract's state. An adapter over a compliance contract that keeps state can meet policy requirement 16 only by reverting when it cannot tell that the state is current, which in practice limits it to one installation.
 
 The adapter, not the individual compliance modules, decides the exemptions. It is therefore a migration path, not an equivalent.
 
@@ -544,6 +584,11 @@ The executable tests in [`ERCXXXX.t.sol`](../assets/eip-XXXX/contracts/test/ERCX
   - `transferFrom` by a spender;
   - a mint (`from` zero);
   - a holder burn (`to` zero).
+- **Installation.**
+  - `onInstall` receives the token, the previous policy and the installer's data, after `policy()` returns the new policy.
+  - If it reverts, the installation reverts and the previous policy stays.
+  - No movement or installation can start inside it.
+  - A policy reinstalled after another sets its holder count again: a list that misses a holder makes the installation revert.
 - **Forced transfers.**
   - A forced transfer succeeds while the token is paused and the holder cap is full, is still counted towards the cap, and still requires an eligible receiver.
   - It unfreezes only the frozen part of what moves: with 1000 held and 950 frozen, moving 100 leaves 900 frozen.
@@ -555,7 +600,7 @@ The executable tests in [`ERCXXXX.t.sol`](../assets/eip-XXXX/contracts/test/ERCX
 The assets folder contains:
 - [`IERCXXXXPolicy.sol`](../assets/eip-XXXX/contracts/interfaces/IERCXXXXPolicy.sol) and [`IERCXXXX.sol`](../assets/eip-XXXX/contracts/interfaces/IERCXXXX.sol): the interfaces above;
 - [`ExampleToken.sol`](../assets/eip-XXXX/contracts/example/ExampleToken.sol): an ERC-20 token that implements ERC-7943's fungible interface through this ERC, with its interface and unit tests beside it;
-- [`ExamplePolicy.sol`](../assets/eip-XXXX/contracts/example/ExamplePolicy.sol): a policy that combines an allowlist with a holder cap, keeping its count through `afterTransfer`, with its interface and unit tests beside it.
+- [`ExamplePolicy.sol`](../assets/eip-XXXX/contracts/example/ExamplePolicy.sol): a policy that combines an allowlist with a holder cap. It sets its count in `onInstall` from a list of holders it checks against `totalSupply()`, and keeps it through `afterTransfer`. Its interface and unit tests sit beside it.
 
 Both examples are for illustration and are not audited. Imports use the remappings `interfaces/=contracts/interfaces/` and `contracts/=contracts/`.
 
@@ -655,14 +700,14 @@ An escrow that must check the entitled account, for example before paying out a 
 
 ### Callbacks, state and reentrancy
 
-`afterTransfer` is an external call made in the middle of a token operation. The token's guard stops it from starting another movement. Because it runs before any recipient hook, a recipient cannot act on policy state that does not yet include the movement.
+`afterTransfer` is an external call made in the middle of a token operation. The token's guard stops it from starting another movement. Because it runs before any recipient hook, a recipient cannot act on policy state that does not yet include the movement. `onInstall` is also an external call. The token's guard stops it from starting a movement or another installation (installation rule 7).
 
-A stateful policy that is installed on a token which already has holders must be initialised to the token's current state, and so must a policy whose `wantsAfterTransfer` changes to `true`. This ERC does not standardise how. The reference policy lets its owner seed the count before it is installed, either as a number or from a list of holders that it checks against `totalSupply()`.
+A stateful policy initialises in `onInstall` (policy requirement 16). A policy whose `wantsAfterTransfer` changes to `true` must initialise too, and no installation tells it, so it does so when its configuration changes. This ERC does not standardise what `onInstall` accepts in `_data`. The reference policy accepts a list of holders, which it checks against `totalSupply()`. A policy that takes state from `_data` without checking it trusts whoever installs it, who need not be the policy's own administrator.
 
-Reinstalling a policy is a new installation: while another policy was installed, it saw none of the token's movements, so state kept from its earlier installation is stale. The same holds for one token of a policy shared by several tokens, when that token switches away and back. Initialising a stateful policy has two windows. The first runs from initialisation to installation, and doing both in one transaction closes it. The second runs from reading the state to the moment the installation executes, and one transaction does not close it when the state was computed off-chain: a governance batch carries fixed calldata, so a value read when the batch was proposed may be stale when it runs. The second window closes only if:
+Reinstalling a policy is an installation: while another policy was installed, it saw none of the token's movements, which is why `onInstall` must not keep state from an earlier installation. The same holds for one token of a policy shared by several tokens, when that token switches away and back. Because `onInstall` runs inside the installation, nothing can happen between initialising and installing. A gap remains between reading the state and the moment the installation executes. When the state was computed off-chain and passed in `_data`, a governance action carries fixed calldata, so a value read when it was proposed may be stale when it runs. That gap closes only if:
 
 - the state lives in a contract that stays in place across policy replacements;
-- the installing transaction reads or verifies the state on-chain, for example by copying it from the outgoing policy, or, for state derived from balances, by checking a sorted list of holders whose balances add up to `totalSupply()`;
+- `onInstall` reads or verifies the state on-chain, for example by copying it from `previousPolicy`, or, for state derived from balances, by checking a sorted list of holders whose balances add up to `totalSupply()`;
 - the token is paused from the snapshot until the installation, remembering that a pause may not stop `FORCED` movements; or
 - the token exposes a count of its movements, and the installation reverts if the count changed since the snapshot. Such a counter is an optional extension, not part of this ERC.
 
@@ -673,7 +718,7 @@ A check against `totalSupply()` rejects stale state, but it does not make the in
 - the list names every account the outgoing policy would let receive, and no account is made eligible until the installation executes. This needs eligibility that can be enumerated, such as an allowlist, and is limited by how many entries fit in one transaction: about 4,000 for the reference policy, whose NatSpec gives the measured figures;
 - a first installation puts in an interim policy that admits a receiver without a balance only by `FORCED`, while still applying the token's eligibility rules, so ordinary movements cannot create holders. This costs one more installation. The second installation then takes the state from the current holders, either:
   - from a list checked in one transaction, as above. A `FORCED` movement to a new account before it executes makes it revert, so enforcement that moves tokens to new accounts waits until it has run, or the list is prepared again; or
-  - from a count the interim policy builds itself, over as many transactions as needed. Anyone may register an account once, while it holds a balance, which adds the balance to a running sum and one to the count. In `afterTransfer` the interim policy keeps the sum and the count current for registered accounts, and ignores movements of zero and movements from an account to itself: otherwise a self-transfer of a whole balance would raise the count, and a zero transfer from an emptied account would lower it, while the sum stays the same. That includes a registered account that emptied and is then refilled by `FORCED`: its flag stays set, so it cannot register again, and the count rises by one when its balance after the move equals the amount it received. Once the sum equals `totalSupply()`, no unregistered account holds tokens and the count is exact. The second installation copies the count from the interim policy and reverts unless the sum still equals `totalSupply()` in that transaction. This has no limit on the number of holders, and a `FORCED` movement to a new account does not stop it, because anyone can register the new holder before the installation executes;
+  - from a count the interim policy builds itself, over as many transactions as needed. Anyone may register an account once, while it holds a balance, which adds the balance to a running sum and one to the count. In `afterTransfer` the interim policy keeps the sum and the count current for registered accounts, and ignores movements of zero and movements from an account to itself: otherwise a self-transfer of a whole balance would raise the count, and a zero transfer from an emptied account would lower it, while the sum stays the same. That includes a registered account that emptied and is then refilled by `FORCED`: its flag stays set, so it cannot register again, and the count rises by one when its balance after the move equals the amount it received. Once the sum equals `totalSupply()`, no unregistered account holds tokens and the count is exact. The second installation's `onInstall` copies the count from the interim policy, which it receives as `previousPolicy`, and reverts unless the sum still equals `totalSupply()` in that transaction. This has no limit on the number of holders, and a `FORCED` movement to a new account does not stop it, because anyone can register the new holder before the installation executes;
 - the state lives in a contract that stays in place across policy replacements, so no list is needed.
 
 Copying the state from the outgoing policy completes in one step, but only when the outgoing policy is trusted. In the staged way above, the outgoing policy at the second installation is the interim one, which checked the sum itself.
