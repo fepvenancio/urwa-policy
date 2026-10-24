@@ -379,7 +379,7 @@ ERC-7943 fixes the token's face; this ERC fixes what is behind it. The policy's 
 - `checkReceive` backs `canReceive`;
 - `checkTransfer` backs `canTransfer` and the movements it predicts.
 
-The token's own checks stay in the token: the frozen amount, any pause, and any account-level conditions it adds. The policy holds the rest of what ERC-7943 calls permissioned rules.
+The token's own checks stay in the token: the frozen amount, any pause, and any account-level conditions it adds. A pause is not an account-level condition: it makes `canTransfer` return `false` and leaves `canSend` and `canReceive` unchanged. ERC-7943 likewise lists a pausing mechanism among the permissioned checks of `canTransfer`. The policy holds the rest of what ERC-7943 calls permissioned rules.
 
 `checkSend` and `checkReceive` take the token as a parameter, as `TransferContext` does. One policy deployment can then serve many tokens, and a simulated call always names the token it is about.
 
@@ -429,6 +429,8 @@ A signature that any account, or only the account it names, may submit is just a
 
 Because `MINT` and `BURN` come first in the order, an executor that carries out a signed burn or mint instruction makes a `BURN` or a `MINT`. The settlement channel's rules do not apply to it.
 
+This keeps one kind for each economic event. A policy's rules on issuance and redemption, such as a holder cap, see a burn as `BURN` whether the holder or an executor submits it, and `canTransfer` predicts both. A token that needs a condition on instructed redemptions, such as a dealing cut-off, enforces it in its executor, as it enforces an instruction's deadline. Moving `EXECUTED` ahead of `MINT` would not reach signed subscription orders either: a mint has a holder only when it settles a claim the token records, so no holder directs it.
+
 The shape of a movement (which address is zero) is not enough on its own. It cannot tell an enforcement mint from an ordinary one, and that is what a policy needs most.
 
 ### What `canTransfer` predicts
@@ -451,6 +453,8 @@ ERC-7943 counts mints and burns as transfers but does not define `canTransfer` f
 - **Stable inputs.** The token asks before the operation changes its balances, supply or frozen amounts, apart from earlier movements of the same operation. Neither the policy nor the token's own checks read state the operation changes before the token asks, and the views a policy reads do not revert during a movement.
 
 A token that wants to limit which contracts act for its holders can restrict `approve` and operator approvals, where that authority is granted.
+
+For the same reason, `data` is empty for `TRANSFER`, `MINT` and `BURN`. `canTransfer` has no data argument, so a decision that read the data of a `safeTransferFrom`, or a payload such as travel-rule information, could not be predicted. Only `EXECUTED` and `FORCED` movements, which `canTransfer` does not predict, carry data to the policy.
 
 `EXECUTED` and `FORCED` decisions may use `operator` and `data`. The submitter is part of what the policy is asked to approve, and a pre-flight for those kinds is specific to the token and knows the submitter. In `canTransfer`'s context, `operator` is `from`, zero for a mint, so the pre-flight context is a pure function of its arguments, the same whoever runs the simulation. It cannot change the answer.
 
@@ -520,6 +524,8 @@ As fixed fields they would make every context workflow-specific. In `data` they 
 
 ERC-1155 already requires batch balance changes to occur in array order, and allows one `TransferSingle` event per item. Checking, moving and notifying each item before the next makes every item's decision the decision a single movement would get at that point in the batch. Rules on aggregate state, such as holder caps, then stay exact.
 
+OpenZeppelin's `ERC1155` applies a whole batch in `_update` and then emits `TransferBatch`, so a token built on it overrides `_update` to apply the items one at a time.
+
 A per-item `canTransfer` cannot predict a whole batch. Integrators that need to can simulate the batch call itself.
 
 ### Cost
@@ -539,6 +545,7 @@ The implementation this ERC is extracted from composes its policy from at most 1
 
 - **ERC-7943** defines the token side. This ERC is the policy side behind it.
 - **ERC-3643** defines a compliance contract for its own token. Its check takes only `from`, `to` and `amount` and returns a `bool`. It learns neither the operator nor the authority, and cannot say why it rejects. Issuance and destruction reach it through separate callbacks. An adapter can present an ERC-3643 compliance contract as an `IERCXXXXPolicy` (see Backwards Compatibility).
+- **Earlier security-token proposals** that were never merged, among them the Security Token Standard and the Simple Restricted Token Standard, already returned a code from a transfer check, with a reason or a message. They define the check a token offers to integrators, as ERC-7943 now does, not an interface between a token and a separate policy.
 - **[ERC-7746](./eip-7746.md)** defines generic security layers. A protected contract calls them before and after its functions, passing the selector, sender, value and calldata, and a layer rejects by reverting. Such a layer must decode each protected function's calldata to learn what moves where. Its before-call hook is not a view, so it cannot back a non-reverting pre-flight. This ERC gives the policy the movement itself, already decoded and labelled.
 - **Rule-composition engines**, including the Universal Policy Engine proposal currently under discussion, define how rules combine inside an engine. They are complementary: such an engine can implement `IERCXXXXPolicy` as its entry point.
 - **[ERC-7484](./eip-7484.md)** defines a registry of attestations about modules for [ERC-7579](./eip-7579.md) accounts. It is relevant to how a token decides which policy to install (see Security Considerations).
