@@ -44,7 +44,8 @@ interface IERCXXXXPolicy is IERC165 {
    * @param amount The quantity moved; 1 for an ERC-721 token
    * @param operator The account that called the token to cause the movement
    * @param kind The authority under which the movement happens
-   * @param data Token-defined data for EXECUTED and FORCED movements; empty for every other kind
+   * @param data Token-defined data. For EXECUTED and FORCED, whatever the token passes. For TRANSFER, MINT and BURN,
+   *        empty or only values the token derives from its own state, never anything the caller supplied
    */
   struct TransferContext {
     address token;

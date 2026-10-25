@@ -98,7 +98,8 @@ interface IERCXXXXPolicy is IERC165 {
    * @param amount The quantity moved; 1 for an ERC-721 token
    * @param operator The account that called the token to cause the movement
    * @param kind The authority under which the movement happens
-   * @param data Token-defined data for EXECUTED and FORCED movements; empty for every other kind
+   * @param data Token-defined data. For EXECUTED and FORCED, whatever the token passes. For TRANSFER, MINT and BURN,
+   *        empty or only values the token derives from its own state, never anything the caller supplied
    */
   struct TransferContext {
     address token;
@@ -272,7 +273,7 @@ The set of kinds is closed. The encodings are `TRANSFER = 0`, `EXECUTED = 1`, `F
 - `amount` MUST be the quantity moved, and `1` for an [ERC-721](./eip-721.md) token.
 - `operator` MUST be the account that called the token to cause the movement. That is `msg.sender`, or the sender resolved by a trusted forwarder as in [ERC-2771](./eip-2771.md). It MUST NOT be `tx.origin`. For `EXECUTED`, `operator` is the executing account. For `FORCED`, it is the enforcing account. In the context of a pre-flight, `operator` is as check rule 3 defines it.
 - `kind` MUST follow the rules above.
-- `data` MUST be empty for `TRANSFER`, `MINT` and `BURN`. For `EXECUTED` and `FORCED`, the token MAY pass data, for example an instruction reference and deadline, or a reference to a legal order. A token that passes data MUST document its encoding.
+- `data` MUST be empty for `TRANSFER`, `MINT` and `BURN`, or hold only values the token derives from its own state, such as the balances of `from` and `to` before the movement. It MUST NOT hold anything the caller supplied. For `EXECUTED` and `FORCED`, the token MAY pass other data, for example an instruction reference and deadline, or a reference to a legal order. A token that passes data MUST document its encoding.
 
 ### Token requirements
 
@@ -315,7 +316,7 @@ The set of kinds is closed. The encodings are `TRANSFER = 0`, `EXECUTED = 1`, `F
      - `amount`: the `amount` argument, or `1` for the non-fungible interface;
      - `operator`: `from`, which is zero for a mint;
      - `kind`: as listed above;
-     - `data`: empty.
+     - `data`: as the movement would build it for this kind from the token's current state, or empty if the token passes none.
 
    When both `from` and `to` are zero, `canTransfer` MUST return `false`. With a zero `from` or `to`, the zero side has no account, so the token applies no account-level check to it.
 4. The token's own checks in `canTransfer` include ERC-7943's unfrozen-amount validation: when part of `from`'s balance is frozen, `canTransfer` returns `false` for an `amount` above the unfrozen amount. Balances, ownership of a non-fungible token and allowances stay outside `canTransfer`, as ERC-7943 specifies for base-standard validations: with nothing frozen, an `amount` above the balance does not make `canTransfer` return `false`, although the movement fails. This ERC also leaves access control on mint and burn functions outside it.
@@ -454,9 +455,9 @@ ERC-7943 counts mints and burns as transfers but does not define `canTransfer` f
 
 A token that wants to limit which contracts act for its holders can restrict `approve` and operator approvals, where that authority is granted.
 
-For the same reason, `data` is empty for `TRANSFER`, `MINT` and `BURN`. `canTransfer` has no data argument, so a decision that read the data of a `safeTransferFrom`, or a payload such as travel-rule information, could not be predicted. Only `EXECUTED` and `FORCED` movements, which `canTransfer` does not predict, carry data to the policy.
+For the same reason, `data` carries nothing the caller supplied for `TRANSFER`, `MINT` and `BURN`. `canTransfer` has no data argument, so a decision that read the data of a `safeTransferFrom`, or a payload such as travel-rule information, could not be predicted. Values the token derives from its own state, such as the balances before the movement, are different. `canTransfer` reads that state in the same block and builds the same `data`, so the context stays a function of the arguments and the token's state, the same whoever runs the simulation. A policy that needs those values reads them from the context and makes no call back into the token. Only `EXECUTED` and `FORCED` movements, which `canTransfer` does not predict, carry other data to the policy.
 
-`EXECUTED` and `FORCED` decisions may use `operator` and `data`. The submitter is part of what the policy is asked to approve, and a pre-flight for those kinds is specific to the token and knows the submitter. In `canTransfer`'s context, `operator` is `from`, zero for a mint, so the pre-flight context is a pure function of its arguments, the same whoever runs the simulation. It cannot change the answer.
+`EXECUTED` and `FORCED` decisions may use `operator` and `data`. The submitter is part of what the policy is asked to approve, and a pre-flight for those kinds is specific to the token and knows the submitter. In `canTransfer`'s context, `operator` is `from`, zero for a mint, so the pre-flight context depends only on its arguments and the token's state, the same whoever runs the simulation. Who runs it cannot change the answer.
 
 ERC-7943 forbids `canTransfer` from reverting, so a policy that reverts or misbehaves must turn into `false`. In Solidity, `try`/`catch` is not enough for this: it does not catch a failure to decode malformed return data. The reference implementation therefore makes a low-level `STATICCALL`, requires at least 32 bytes of return data (the minimum the decoder accepts on the movement path), and copies back only one word.
 
@@ -701,7 +702,7 @@ A permitting pre-flight reflects the state when it ran. Eligibility, frozen amou
 
 ### Escrow and entitled accounts
 
-A policy sees the accounts that hold tokens. When an escrow such as an asynchronous vault holds tokens for others, the context shows the escrow as `from` or `to`, not the account entitled to them. Only the kind follows the holder the token records. `data` is empty for `TRANSFER`, `MINT` and `BURN`, so the entitled account cannot be passed there.
+A policy sees the accounts that hold tokens. When an escrow such as an asynchronous vault holds tokens for others, the context shows the escrow as `from` or `to`, not the account entitled to them. Only the kind follows the holder the token records. `data` carries nothing the caller supplied for `TRANSFER`, `MINT` and `BURN`, and this ERC defines no field for the entitled account, so a policy cannot rely on being told it.
 
 An escrow that must check the entitled account, for example before paying out a claim, has to do so itself, for instance by calling the token's `canTransfer` or `canReceive` for that account.
 
