@@ -132,18 +132,25 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
                             VIEW
   //////////////////////////////////////////////////////////////*/
 
-  /// @inheritdoc IERC7943Fungible
+  /**
+   * @inheritdoc IERC7943Fungible
+   * @dev True for the zero address, the sink of every burn, without calling the policy
+   */
   function canReceive(
     address _account
   ) external view returns (bool _allowed) {
-    _allowed = _permits(abi.encodeCall(IERCXXXXPolicy.checkReceive, (address(this), _account)));
+    _allowed =
+      _account == address(0) || _permits(abi.encodeCall(IERCXXXXPolicy.checkReceive, (address(this), _account)));
   }
 
-  /// @inheritdoc IERC7943Fungible
+  /**
+   * @inheritdoc IERC7943Fungible
+   * @dev True for the zero address, the source of every mint, without calling the policy
+   */
   function canSend(
     address _account
   ) external view returns (bool _allowed) {
-    _allowed = _permits(abi.encodeCall(IERCXXXXPolicy.checkSend, (address(this), _account)));
+    _allowed = _account == address(0) || _permits(abi.encodeCall(IERCXXXXPolicy.checkSend, (address(this), _account)));
   }
 
   /**
@@ -295,8 +302,8 @@ contract ExampleToken is ERC20, AccessControl, Pausable, ReentrancyGuardTransien
   /**
    * @notice The token's own checks, shared by `_update` and `canTransfer`
    * @dev Enforcement ignores the pause, and `forcedTransfer` has already unfrozen what it moves. As in ERC-7943, the
-   *      unfrozen check applies only while part of the balance is frozen: a balance shortfall with nothing frozen is
-   *      left to the base standard, which reverts with `ERC20InsufficientBalance`
+   *      unfrozen check applies only while the account has a frozen amount: a balance shortfall with nothing frozen
+   *      is left to the base standard, which reverts with `ERC20InsufficientBalance`
    * @param _from The sender, or address(0)
    * @param _amount The amount
    * @param _kind The kind

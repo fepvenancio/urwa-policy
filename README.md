@@ -4,7 +4,7 @@ A draft ERC and its reference implementation. The ERC defines how an [ERC-7943](
 
 - **Movements.** For every movement of its balances, the token builds a `TransferContext`, labelled with the authority under which the movement happens: `TRANSFER`, `EXECUTED`, `FORCED`, `MINT` or `BURN`.
 - **Decisions.** The token asks the policy for a `bytes32` decision before any balance changes. `keccak256("TRANSFER_OK")` permits; every other value, zero included, rejects.
-- **Pre-flight.** The same policy answers the token's ERC-7943 `canSend`, `canReceive` and `canTransfer`. `canTransfer` must give the same decision as the transfer, mint or burn it predicts.
+- **Pre-flight.** The same policy answers the token's ERC-7943 `canSend`, `canReceive` and `canTransfer`. `canTransfer` must give the same decision as the transfer, mint or burn it predicts, leaving the base standard's validations and access control aside.
 - **State.** A policy that keeps state observes completed movements through an authenticated `afterTransfer`.
 
 **Status:** draft, not yet submitted. Nothing here is audited.
@@ -23,6 +23,14 @@ A draft ERC and its reference implementation. The ERC defines how an [ERC-7943](
 `XXXX` stands for the ERC number, which an editor assigns on submission.
 
 ## Commands
+
+The lockfile records forge-std as `git+ssh`. Without a GitHub SSH key, run this first, as CI does:
+
+```bash
+git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+```
+
+Then:
 
 ```bash
 npm ci --ignore-scripts

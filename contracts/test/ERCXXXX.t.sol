@@ -268,6 +268,27 @@ contract ERCXXXXIntegrationTest is Helpers {
     assertFalse(_token.canTransfer(_actors[1], _actors[0], 1));
   }
 
+  /// @notice ERC-7943: canTransfer performs canSend on `from` and canReceive on `to`, zero included. The zero address
+  ///         passes both, so the account checks of a mint fall on `to` alone and those of a burn on `from` alone
+  function test_TheZeroAddressPassesBothAccountChecks() public {
+    vm.prank(_admin);
+    _policy.setAllowlisted(_actors[0], false);
+    assertTrue(_token.canSend(address(0)));
+    assertTrue(_token.canReceive(address(0)));
+    assertTrue(_token.canTransfer(address(0), _actors[1], 1));
+    assertFalse(_token.canTransfer(address(0), _actors[0], 1));
+    assertTrue(_token.canTransfer(_actors[1], address(0), 1));
+    assertFalse(_token.canTransfer(_actors[0], address(0), 1));
+  }
+
+  /// @notice Passing canReceive does not make the zero address a destination: the base token still rejects it
+  function test_APlainTransferToTheZeroAddressStillReverts() public {
+    assertTrue(_token.canReceive(address(0)));
+    vm.prank(_actors[0]);
+    vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)));
+    _token.transfer(address(0), 1);
+  }
+
   /*///////////////////////////////////////////////////////////////
                             PRE-FLIGHT PARITY
   //////////////////////////////////////////////////////////////*/

@@ -97,6 +97,9 @@ contract ExampleTokenUnitTest is Helpers {
     vm.prank(_admin);
     _fresh.grantRole(_minterRole, _minter);
     assertEq(_fresh.policy(), address(0));
+    // The zero address passes the account checks even with no policy installed
+    assertTrue(_fresh.canSend(address(0)));
+    assertTrue(_fresh.canReceive(address(0)));
     assertFalse(_fresh.canTransfer(address(0), _alice, 1));
     vm.prank(_minter);
     vm.expectRevert();
@@ -443,7 +446,7 @@ contract ExampleTokenUnitTest is Helpers {
   }
 
   /// @notice ERC-7943 leaves a balance shortfall to the base standard: with nothing frozen, it does not make `false`
-  function test_CanTransfer_WhenNothingIsFrozenAndTheAmountExceedsTheBalance_ItReturnsTrue() public {
+  function test_CanTransfer_WhenNothingIsFrozenAndTheAmountExceedsTheBalance_ItReturnsTrue() public view {
     assertTrue(_token.canTransfer(_alice, _bob, 1001));
   }
 
@@ -499,6 +502,16 @@ contract ExampleTokenUnitTest is Helpers {
     vm.mockCall(_policy, abi.encodeWithSelector(IERCXXXXPolicy.checkReceive.selector), abi.encode(bytes32(0)));
     assertFalse(_token.canSend(_alice));
     assertFalse(_token.canReceive(_alice));
+  }
+
+  /// @notice The zero address is the source of every mint and the sink of every burn: it passes without a policy call
+  function test_CanSendAndCanReceive_WhenTheAccountIsZero_ItReturnsTrueWithoutCallingThePolicy() public {
+    vm.mockCall(_policy, abi.encodeWithSelector(IERCXXXXPolicy.checkSend.selector), abi.encode(_REJECT));
+    vm.mockCall(_policy, abi.encodeWithSelector(IERCXXXXPolicy.checkReceive.selector), abi.encode(_REJECT));
+    vm.expectCall(_policy, abi.encodeWithSelector(IERCXXXXPolicy.checkSend.selector), 0);
+    vm.expectCall(_policy, abi.encodeWithSelector(IERCXXXXPolicy.checkReceive.selector), 0);
+    assertTrue(_token.canSend(address(0)));
+    assertTrue(_token.canReceive(address(0)));
   }
 
   function test_SupportsInterface() public view {
