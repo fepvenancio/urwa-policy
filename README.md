@@ -7,7 +7,7 @@ A draft ERC and its reference implementation. The ERC defines how an [ERC-7943](
 - **Pre-flight.** The same policy answers the token's ERC-7943 `canSend`, `canReceive` and `canTransfer`. `canTransfer` must give the same decision as the transfer, mint or burn it predicts, leaving the base standard's validations and access control aside.
 - **State.** A policy that keeps state observes completed movements through an authenticated `afterTransfer`.
 
-**Status:** draft, not yet submitted. Nothing here is audited.
+**Status:** draft, submitted as [ethereum/ERCs#2128](https://github.com/ethereum/ERCs/pull/2128), with no number assigned yet. Nothing here is audited.
 
 ## Layout
 

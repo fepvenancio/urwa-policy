@@ -1,6 +1,6 @@
 # The ERC draft
 
-[`eip-draft_urwa_policy.md`](eip-draft_urwa_policy.md) is the draft as it will be submitted to ethereum/ERCs. It carries EIP-1's CC0 waiver, and [`LICENSE`](LICENSE) in this folder holds the CC0 text.
+[`eip-draft_urwa_policy.md`](eip-draft_urwa_policy.md) is the draft submitted to ethereum/ERCs in [pull request 2128](https://github.com/ethereum/ERCs/pull/2128). That pull request carries a copy, as `ERCS/erc-9999.md` with assets in `assets/erc-9999/`, until an editor assigns a number. A change here has to be made there too. It carries EIP-1's CC0 waiver, and [`LICENSE`](LICENSE) in this folder holds the CC0 text.
 
 ## Keeping it in sync
 
