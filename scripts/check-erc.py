@@ -16,7 +16,7 @@ problems = []
 
 front, body = doc.split("\n---\n", 1)
 header = dict(line.split(": ", 1) for line in front.strip("-\n").splitlines())
-for field in ("title", "description", "author", "discussions-to", "status", "type", "category", "created", "requires"):
+for field in ("eip", "title", "description", "author", "discussions-to", "status", "type", "category", "created", "requires"):
     if field not in header:
         problems.append(f"header lacks {field}")
 if len(header.get("title", "")) > 44:
@@ -48,7 +48,7 @@ def function_source(path, name):
 
 blocks = [b.strip() for b in re.findall(r"```solidity\n(.*?)```", body, re.S)]
 expected = [
-    interface_body("contracts/interfaces/IERCXXXXPolicy.sol") + "\n\n" + interface_body("contracts/interfaces/IERCXXXX.sol"),
+    interface_body("contracts/interfaces/IERC8473Policy.sol") + "\n\n" + interface_body("contracts/interfaces/IERC8473.sol"),
     function_source("contracts/example/ExampleToken.sol", "_update") + "\n\n" + function_source("contracts/example/ExampleToken.sol", "_move"),
     function_source("contracts/example/ExampleToken.sol", "_permits"),
 ]
@@ -70,8 +70,8 @@ for m in re.finditer(r"(\[)?\b(ERC|EIP)-(\d+)\b(\]\(\./eip-(\d+)\.md\))?", prose
         if not linked:
             problems.append(f"first mention of {m.group(2)}-{number} is not a link")
 
-# The ERC links its assets as ../assets/eip-XXXX/<path>; here they live at <path>.
-for target in re.findall(r"\]\(\.\./assets/eip-XXXX/([^)]+)\)", body):
+# The ERC links its assets as ../assets/eip-8473/<path>; here they live at <path>.
+for target in re.findall(r"\]\(\.\./assets/eip-8473/([^)]+)\)", body):
     if not (root / target).exists():
         problems.append(f"asset link points to a missing file: {target}")
 for target in re.findall(r"\]\((https?://[^)]+)\)", body):
