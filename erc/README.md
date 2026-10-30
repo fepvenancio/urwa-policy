@@ -4,7 +4,7 @@
 
 ## Keeping it in sync
 
-- The Solidity blocks in the draft are copies of `contracts/interfaces/IERCXXXXPolicy.sol`, `contracts/interfaces/IERCXXXX.sol`, and the `_update` and `_permits` functions of `contracts/example/ExampleToken.sol`.
+- The Solidity blocks in the draft are copies of `contracts/interfaces/IERCXXXXPolicy.sol`, `contracts/interfaces/IERCXXXX.sol`, and the `_update`, `_move` and `_permits` functions of `contracts/example/ExampleToken.sol`.
 - `npm run check:erc` fails when any of them drifts. CI runs it on every push to `main` and on every pull request.
 - When an interface changes, update the draft in the same change. Selectors, interface identifiers and test cases are pinned in `contracts/test/ERCXXXX.t.sol` and the unit tests beside the examples.
 

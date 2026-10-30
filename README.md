@@ -15,7 +15,7 @@ A draft ERC and its reference implementation. The ERC defines how an [ERC-7943](
 |---|---|
 | [`erc/eip-draft_urwa_policy.md`](erc/eip-draft_urwa_policy.md) | The ERC draft, in EIP-1 format |
 | [`contracts/interfaces/`](contracts/interfaces) | `IERCXXXXPolicy` and `IERCXXXX` (normative); ERC-7943's fungible interface, copied verbatim; the examples' interfaces |
-| [`contracts/example/`](contracts/example) | `ExampleToken` (ERC-20 + ERC-7943 through this ERC) and `ExamplePolicy` (allowlist + holder cap), each with its unit tests |
+| [`contracts/example/`](contracts/example) | `ExampleToken` (ERC-20 + ERC-7943 through this ERC), `ExampleExecutorToken` (the same token with a settlement channel for signed instructions) and `ExamplePolicy` (allowlist + holder cap), each with its unit tests |
 | [`contracts/test/`](contracts/test) | Conformance and integration tests, faulty policies used by them, and test helpers |
 | [`scripts/check-erc.py`](scripts/check-erc.py) | Checks that the draft's Solidity blocks match `contracts/`, and that its links and header follow EIP-1 |
 | [`scripts/build-erc-assets.sh`](scripts/build-erc-assets.sh) | Assembles `erc/assets/eip-XXXX/` for the pull request to ethereum/ERCs |

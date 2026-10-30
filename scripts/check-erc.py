@@ -49,7 +49,7 @@ def function_source(path, name):
 blocks = [b.strip() for b in re.findall(r"```solidity\n(.*?)```", body, re.S)]
 expected = [
     interface_body("contracts/interfaces/IERCXXXXPolicy.sol") + "\n\n" + interface_body("contracts/interfaces/IERCXXXX.sol"),
-    function_source("contracts/example/ExampleToken.sol", "_update"),
+    function_source("contracts/example/ExampleToken.sol", "_update") + "\n\n" + function_source("contracts/example/ExampleToken.sol", "_move"),
     function_source("contracts/example/ExampleToken.sol", "_permits"),
 ]
 if len(blocks) != len(expected):
