@@ -72,6 +72,33 @@ contract RevertingPolicy is PermissivePolicy {
   }
 }
 
+/// @notice Runs out of gas in every check, however much it is given
+contract GasBurningPolicy is PermissivePolicy {
+  function checkReceive(
+    address,
+    address
+  ) external pure override returns (bytes32 _reason) {
+    _reason = _burnGas();
+  }
+
+  function checkSend(
+    address,
+    address
+  ) external pure override returns (bytes32 _reason) {
+    _reason = _burnGas();
+  }
+
+  function checkTransfer(
+    TransferContext calldata
+  ) external pure override returns (bytes32 _reason) {
+    _reason = _burnGas();
+  }
+
+  function _burnGas() private pure returns (bytes32 _reason) {
+    while (_reason == 0) {}
+  }
+}
+
 /// @notice Answers the movement check with 31 bytes: too short to decode as a bytes32
 contract ShortReturnPolicy is PermissivePolicy {
   function checkTransfer(

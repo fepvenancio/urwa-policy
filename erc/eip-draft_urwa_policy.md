@@ -588,7 +588,7 @@ Expected values:
 - Sent to the reference policy with that policy's own token as `token`, a `TransferContext` whose `kind` is encoded as `5` reverts, because the policy reads `kind`. A `kind` of `4` (`BURN`) decodes.
 
 The executable tests in [`ERCXXXX.t.sol`](../assets/eip-XXXX/contracts/test/ERCXXXX.t.sol) and the unit tests beside the contracts run against the reference implementation:
-- **Fail-closed returns.** A policy with an unassigned return value rejects the kinds its author forgot. For a reverting policy, or one that returns 31 bytes, `canTransfer` returns `false` without reverting, and the movement reverts.
+- **Fail-closed returns.** A policy with an unassigned return value rejects the kinds its author forgot. For a reverting policy, one that returns 31 bytes, or one that runs out of gas, `canTransfer` returns `false` without reverting, and the movement reverts.
 - **Echo.** A contract that echoes its calldata answers `checkTransfer` with `bytes32(checkTransfer.selector)`, which is not `TRANSFER_OK`.
 - **The callback.** `afterTransfer` reverts for any caller other than the token, and cannot start a second movement. A `wantsAfterTransfer` that answers with the word `2`, or with 31 bytes, makes the movement revert.
 - **Account checks.** `canSend` and `canReceive` follow the policy, and `canTransfer` reflects both. The zero address passes both: the account checks of a mint fall on the receiver and those of a burn on the sender, and a plain transfer to the zero address still reverts.

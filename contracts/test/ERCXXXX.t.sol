@@ -16,6 +16,7 @@ import {
   BadBoolPolicy,
   EchoContract,
   ForgetfulPolicy,
+  GasBurningPolicy,
   InstallRecorderPolicy,
   ReentrantInstallPolicy,
   ReentrantPolicy,
@@ -164,6 +165,21 @@ contract ERCXXXXIntegrationTest is Helpers {
     vm.prank(_actors[0]);
     vm.expectRevert(RevertingPolicy.RevertingPolicy_Failure.selector);
     _token.transfer(_actors[1], 1);
+  }
+
+  /// @notice The token keeps 1/64 of its gas back from the call, enough to answer once the policy has burned the rest
+  function test_WhenACheckRunsOutOfGas_ThePreflightIsFalseAndTheMovementReverts() public {
+    uint256 _gas = 1_000_000;
+    // The limit alone does not change the answer.
+    assertTrue(_token.canTransfer{gas: _gas}(_actors[0], _actors[1], 1));
+    _install(address(new GasBurningPolicy()));
+
+    assertFalse(_token.canSend{gas: _gas}(_actors[0]));
+    assertFalse(_token.canReceive{gas: _gas}(_actors[1]));
+    assertFalse(_token.canTransfer{gas: _gas}(_actors[0], _actors[1], 1));
+    vm.prank(_actors[0]);
+    vm.expectRevert();
+    _token.transfer{gas: _gas}(_actors[1], 1);
   }
 
   function test_WhenTheAnswerIsShorterThanAWord_ThePreflightIsFalseAndTheMovementReverts() public {
