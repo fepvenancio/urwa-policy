@@ -9,6 +9,8 @@ A draft ERC and its reference implementation. The ERC defines how an [ERC-7943](
 
 **Status:** draft, submitted as ERC-8473 in [ethereum/ERCs#2128](https://github.com/ethereum/ERCs/pull/2128). Nothing here is audited.
 
+A guide with user stories and diagrams, and the draft rendered as a page, are at [fepvenancio.github.io/urwa-policy](https://fepvenancio.github.io/urwa-policy/).
+
 ## Layout
 
 | Path | What it is |

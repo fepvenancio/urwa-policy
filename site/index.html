@@ -1,0 +1,131 @@
+<!-- SPDX-License-Identifier: MIT -->
+<div class="page">
+
+<header class="top">
+  <p class="eyebrow">Draft ERC-8473 · the policy side of ERC-7943</p>
+  <h1>uRWA Policy</h1>
+  <p class="lede">An ERC-7943 token asks one external contract, its policy, whether each movement of its balances may happen. The policy answers with a <code>bytes32</code>: <code>TRANSFER_OK</code> permits, and anything else rejects with a reason. The same policy answers the token's ERC-7943 checks, so a wallet's pre-flight runs the same checks as the transfer it predicts.</p>
+  <div class="facts">
+    <span class="fact">permit = <b>keccak256("TRANSFER_OK")</b></span>
+    <span class="fact">policy interface <b>0x9cb56a99</b></span>
+    <span class="fact">token interface <b>0x0505c8c9</b></span>
+    <span class="fact"><b>5</b> kinds of movement</span>
+    <span class="fact">status <b>Draft</b></span>
+  </div>
+</header>
+
+<section>
+  <div class="prose">
+    <h2>Why a separate policy</h2>
+    <p><a href="https://eips.ethereum.org/EIPS/eip-7943">ERC-7943</a> standardises what a permissioned token exposes: account checks (<code>canSend</code>, <code>canReceive</code>), a transfer pre-flight (<code>canTransfer</code>), frozen balances and <code>forcedTransfer</code>. It deliberately leaves open how the token reaches its decisions.</p>
+    <p>Those decisions, about identity, jurisdiction, lock-ups, holder caps and settlement hours, change more often than a token's accounting, and different teams write and audit them. So tokens keep them in a separate contract, and each implementation invents its own interface to it. A compliance provider has to integrate with every token family separately, and a token cannot switch providers without a custom adapter.</p>
+    <p>ERC-8473 standardises that boundary. A token and a policy written by different teams work together, and when both follow it, the guarantees ERC-7943 asks of a token's checks hold.</p>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>What it defines</h2>
+    <ul class="plain">
+      <li><strong>Movements.</strong> For every movement of its balances, the token builds a <code>TransferContext</code> labelled with the authority under which the movement happens: <span class="k k-transfer">TRANSFER</span>, <span class="k k-executed">EXECUTED</span>, <span class="k k-forced">FORCED</span>, <span class="k k-mint">MINT</span> or <span class="k k-burn">BURN</span>.</li>
+      <li><strong>Decisions.</strong> The token asks the policy before any balance changes. One fixed non-zero value permits. Every other value, zero included, rejects.</li>
+      <li><strong>Pre-flights.</strong> The same policy answers <code>canSend</code>, <code>canReceive</code> and <code>canTransfer</code>, and <code>canTransfer</code> runs the same checks as the movement it predicts.</li>
+      <li><strong>State.</strong> A policy that keeps state, such as a holder count, is told about each completed movement through an authenticated callback, and is called on every installation so it can set that state up.</li>
+    </ul>
+  </div>
+  <figure>
+    <div class="fig-scroll">
+      <svg class="d" viewBox="0 0 940 380" role="img" aria-label="Callers reach the token through three paths: movements through _move, ERC-7943 checks through the pre-flight views, and installation through setPolicy. The token calls the policy with STATICCALL for checks and with CALL only for afterTransfer and onInstall; the policy reads token balances back.">
+        <defs>
+          <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <!-- callers -->
+        <rect class="b2" x="12" y="60" width="244" height="70" rx="8"/>
+        <text x="26" y="84" class="bold">Holders, spenders, minter, enforcer</text>
+        <text x="26" y="104" class="mono sm">transfer · transferFrom · burn</text>
+        <text x="26" y="120" class="mono sm">mint · forcedTransfer</text>
+        <rect class="b2" x="12" y="188" width="244" height="56" rx="8"/>
+        <text x="26" y="210" class="bold">Wallets and protocols</text>
+        <text x="26" y="230" class="mono sm">canSend · canReceive · canTransfer</text>
+        <rect class="b2" x="12" y="295" width="244" height="50" rx="8"/>
+        <text x="26" y="316" class="bold">Token admin</text>
+        <text x="26" y="334" class="mono sm">setPolicy(policy, data)</text>
+        <!-- token frame -->
+        <rect class="frame" x="296" y="20" width="304" height="345" rx="10"/>
+        <text x="312" y="44" class="bold">Token</text><text x="360" y="44" class="m mono">ExampleToken</text>
+        <rect class="b" x="312" y="60" width="272" height="70" rx="7"/>
+        <text x="326" y="84" class="mono bold">_move</text>
+        <text x="326" y="104" class="m">one path for every movement</text>
+        <text x="326" y="120" class="m">guarded against reentrancy</text>
+        <rect class="band" x="312" y="142" width="272" height="34" rx="6"/>
+        <text x="448" y="164" text-anchor="middle" class="sm">own checks: pause · frozen amount</text>
+        <line class="ln" x1="372" y1="130" x2="372" y2="140" marker-end="url(#m1)"/>
+        <line class="ln" x1="524" y1="188" x2="524" y2="178" marker-end="url(#m1)"/>
+        <rect class="b" x="312" y="188" width="272" height="56" rx="7"/>
+        <text x="326" y="210" class="mono sm">canSend · canReceive · canTransfer</text>
+        <text x="326" y="230" class="m">never revert · canTransfer runs own checks</text>
+        <rect class="b" x="312" y="295" width="272" height="50" rx="7"/>
+        <text x="326" y="316" class="mono bold">setPolicy</text>
+        <text x="326" y="334" class="m">guarded · ERC-165 check</text>
+        <!-- caller arrows -->
+        <line class="ln" x1="256" y1="95" x2="310" y2="95" marker-end="url(#m1)"/>
+        <line class="ln" x1="256" y1="216" x2="310" y2="216" marker-end="url(#m1)"/>
+        <line class="ln" x1="256" y1="320" x2="310" y2="320" marker-end="url(#m1)"/>
+        <!-- policy frame -->
+        <rect class="frame" x="700" y="20" width="224" height="345" rx="10"/>
+        <text x="716" y="44" class="bold">Policy</text><text x="768" y="44" class="m mono">ExamplePolicy</text>
+        <rect class="b" x="716" y="60" width="192" height="70" rx="7"/>
+        <text x="730" y="82" class="mono sm">checkTransfer</text>
+        <text x="730" y="100" class="mono sm">wantsAfterTransfer</text>
+        <text x="730" y="118" class="mono sm">afterTransfer</text>
+        <text x="812" y="158" text-anchor="middle" class="m">state: allowlist,</text>
+        <text x="812" y="174" text-anchor="middle" class="m">cap, holderCount</text>
+        <rect class="b" x="716" y="188" width="192" height="56" rx="7"/>
+        <text x="730" y="210" class="mono sm">checkSend · checkReceive</text>
+        <text x="730" y="230" class="mono sm">checkTransfer</text>
+        <rect class="b" x="716" y="295" width="192" height="50" rx="7"/>
+        <text x="730" y="316" class="mono sm">onInstall</text>
+        <text x="730" y="334" class="m">sets its state again</text>
+        <!-- cross arrows -->
+        <line class="ln" x1="584" y1="84" x2="714" y2="84" marker-end="url(#m1)"/>
+        <text x="650" y="78" text-anchor="middle" class="mono sm">STATICCALL ×2</text>
+        <line class="ln" x1="584" y1="116" x2="714" y2="116" marker-end="url(#m1)"/>
+        <text x="650" y="110" text-anchor="middle" class="mono sm">CALL</text>
+        <line class="ln" x1="584" y1="216" x2="714" y2="216" marker-end="url(#m1)"/>
+        <text x="650" y="210" text-anchor="middle" class="mono sm">STATICCALL</text>
+        <line class="ln" x1="584" y1="320" x2="714" y2="320" marker-end="url(#m1)"/>
+        <text x="650" y="314" text-anchor="middle" class="mono sm">CALL</text>
+        <line class="ln dash" x1="700" y1="268" x2="602" y2="268" marker-end="url(#m1)"/>
+        <text x="650" y="262" text-anchor="middle" class="sm">view reads</text>
+        <text x="650" y="284" text-anchor="middle" class="m mono sm">balanceOf · totalSupply</text>
+      </svg>
+    </div>
+    <figcaption><b>Three paths, one boundary.</b> The checks cross as <code>STATICCALL</code>, so the policy cannot change anything while it answers. Only <code>afterTransfer</code> and <code>onInstall</code> are state-changing calls, and the policy accepts them only from the token. The policy reads balances and the total supply back from the token.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>Start here</h2>
+  </div>
+  <div class="routes">
+    <a class="route" href="how-it-works.html"><b>Understand it</b><span>The decision value, reason codes, the five kinds, the transfer context, pre-flights, the callback and installation, explained in plain words.</span></a>
+    <a class="route" href="stories.html"><b>See it work</b><span>Six user stories, each with a sequence diagram: a transfer, a wallet's pre-flight, a mint and a burn, a forced transfer, an executed instruction, and replacing the policy.</span></a>
+    <a class="route" href="implementing.html"><b>Build with it</b><span>Checklists for writing a token and a policy, the mistakes to avoid, and the reference's test suites.</span></a>
+    <a class="route" href="contributing.html"><b>Help shape it</b><span>Where the standard is discussed, how to report a bug or send a change, and how the repository fits together.</span></a>
+  </div>
+  <p class="spec-link">The normative text is the <a href="spec.html">specification</a>. Where this guide and the specification differ, the specification is right, and the guide has a bug.</p>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>Status</h2>
+    <ul class="plain">
+      <li>The ERC is a draft, submitted to ethereum/ERCs in <a href="https://github.com/ethereum/ERCs/pull/2128">pull request 2128</a>. It can still change.</li>
+      <li>It is discussed on <a href="https://ethereum-magicians.org/t/erc-8473-urwa-policy-interface/30048">Ethereum Magicians</a>.</li>
+      <li>The reference implementation in <a href="https://github.com/fepvenancio/urwa-policy">fepvenancio/urwa-policy</a> has a token (<code>ExampleToken</code>), the same token with an executor channel (<code>ExampleExecutorToken</code>) and a policy (<code>ExamplePolicy</code>). It shows the specification working, and it is not audited.</li>
+    </ul>
+  </div>
+</section>
+
+</div>

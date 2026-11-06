@@ -13,7 +13,8 @@
     "fmt": "forge fmt contracts",
     "fmt:check": "forge fmt --check contracts",
     "check:erc": "python3 -I scripts/check-erc.py",
-    "erc:assets": "scripts/build-erc-assets.sh"
+    "erc:assets": "scripts/build-erc-assets.sh",
+    "site": "python3 -I scripts/build-site.py"
   },
   "devDependencies": {
     "@openzeppelin/contracts": "5.6.1",

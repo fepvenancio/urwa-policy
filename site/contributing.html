@@ -1,0 +1,36 @@
+<!-- SPDX-License-Identifier: MIT -->
+<div class="page">
+
+<header class="top">
+  <p class="eyebrow">Contributing</p>
+  <h1>Help shape the standard</h1>
+  <p class="lede">ERC-8473 is a draft, so now is when feedback changes it most. Reviews of the specification, second implementations, and bug reports on the reference are all welcome.</p>
+</header>
+
+<section>
+  <div class="routes">
+    <a class="route" href="https://ethereum-magicians.org/t/erc-8473-urwa-policy-interface/30048"><b>Discuss the standard</b><span>On the Ethereum Magicians thread, the ERC's discussions-to. Questions, objections and proposed changes to the specification go here.</span></a>
+    <a class="route" href="https://github.com/fepvenancio/urwa-policy/issues"><b>Report a bug</b><span>As a GitHub issue, for anything wrong in the reference contracts, the tests, or this site.</span></a>
+    <a class="route" href="https://github.com/fepvenancio/urwa-policy/pulls"><b>Send a change</b><span>Pull requests are welcome for code and docs. Run the checks below first.</span></a>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>How a change moves</h2>
+    <ul class="plain">
+      <li><strong>The draft and the code change together.</strong> A change to an interface, to the reference token's <code>_update</code>, <code>_move</code> or <code>_permits</code>, or to a selector updates the draft in the same change. <code>npm run check:erc</code> fails when the draft's code blocks drift from <code>contracts/</code>.</li>
+      <li><strong>The guide changes with them.</strong> A change to anything this site's hand-written pages explain updates those pages in the same change. The specification page and this page's README sections are generated, so they follow on their own.</li>
+      <li><strong>Every check passes.</strong> Lint, format, both test profiles, Slither, the draft check and the site build. The commands are below.</li>
+      <li><strong>The ERC pull request follows.</strong> Changes land here first. Until <a href="https://github.com/ethereum/ERCs/pull/2128">ethereum/ERCs#2128</a> merges, the maintainer copies changes to the draft and its assets there.</li>
+    </ul>
+  </div>
+<pre><code>npm run lint:sol &amp;&amp; npm run fmt:check &amp;&amp; npm test &amp;&amp; npm run test:isolated &amp;&amp; slither . &amp;&amp; npm run check:erc
+scripts/fetch-tool.sh pandoc &amp;&amp; npm run site</code></pre>
+  <div class="prose">
+    <p><code>npm run site</code> builds this site into <code>_site/</code> and fails on a broken internal link. Preview it with <code>python3 -m http.server -d _site</code>.</p>
+    <p>The rest of this page is the repository's README and the ERC folder's README, rendered as they are.</p>
+  </div>
+</section>
+
+</div>

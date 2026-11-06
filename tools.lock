@@ -4,5 +4,12 @@
 # digest, and the project's published .sha256. Foundry additionally verified with `gh attestation verify -R
 # foundry-rs/foundry` (sigstore build provenance).
 #
+#
+# pandoc builds the documentation site (scripts/build-site.py). Its hashes were checked on 2026-11-05 against the
+# downloaded files and GitHub's recorded asset digests, which agreed. pandoc publishes no .sha256 files and no build
+# attestations. 3.12.1 was the newest release at least two weeks old.
+#
 # tool    version  platform      sha256                                                            url
 foundry   1.8.1    linux-x64     37b45855232e57624d90113b049ca54f0c92055bb5c1997fcbdc3076c7b89c10  https://github.com/foundry-rs/foundry/releases/download/v1.8.1/foundry_v1.8.1_linux_amd64.tar.gz
+pandoc    3.12.1   linux-x64     d0c90410e90204c9ca83b8539fac5c7aed01fd537207e4585849f8abc5df20b8  https://github.com/jgm/pandoc/releases/download/3.12.1/pandoc-3.12.1-linux-amd64.tar.gz
+pandoc    3.12.1   darwin-arm64  c2146cf33a583f3ac93eccddf1bb662371d5cfcce1aad1c87ad860cca1435d46  https://github.com/jgm/pandoc/releases/download/3.12.1/pandoc-3.12.1-arm64-macOS.zip

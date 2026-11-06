@@ -1,0 +1,50 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A deployment already running finishes before the next one starts.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+# Supply chain: as in ci.yml, actions pinned to commit SHAs and an exact Python. pandoc comes from a release asset
+# whose sha256 is pinned in tools.lock (scripts/fetch-tool.sh).
+
+jobs:
+  build:
+    name: Build the site, check its links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: 3.12.15
+      - run: scripts/fetch-tool.sh pandoc
+      # Fails on a pandoc warning, a missing file behind a rewritten link, a repeated id, or a broken internal link.
+      - run: python3 -I scripts/build-site.py
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

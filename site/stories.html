@@ -1,0 +1,535 @@
+<!-- SPDX-License-Identifier: MIT -->
+<div class="page">
+
+<header class="top">
+  <p class="eyebrow">User stories</p>
+  <h1>Six movements, call by call</h1>
+  <p class="lede">Each story follows one person's goal through the reference contracts: who calls what, in which order, what the policy is told, and what happens when the answer is no. The contracts are <code>ExampleToken</code>, <code>ExampleExecutorToken</code> and <code>ExamplePolicy</code>. The policy here combines an allowlist with a holder cap. Story 5 also uses a settlement window, which <code>ExamplePolicy</code> does not have: the tests show it with a second policy, <code>ExecutedRulesPolicy</code>.</p>
+  <nav class="toc-inline" aria-label="Stories">
+    <a href="#story-transfer">1. A transfer</a>
+    <a href="#story-wallet">2. A wallet's pre-flight</a>
+    <a href="#story-mint">3. A mint and a burn</a>
+    <a href="#story-forced">4. A forced transfer</a>
+    <a href="#story-executed">5. An executed instruction</a>
+    <a href="#story-install">6. Replacing the policy</a>
+  </nav>
+  <p class="spec-link">Reading the diagrams: a solid arrow is a call, a dashed arrow is what comes back, a rounded box is a step inside the contract, and the shaded bar on the token is the reentrancy guard. Numbers match the steps under each diagram.</p>
+</header>
+
+<!-- 1 -->
+<section class="story" id="story-transfer">
+  <div class="story-head">
+    <p class="story-num">Story 1 · <span class="k k-transfer">TRANSFER</span></p>
+    <h2>A holder sends tokens to another verified investor</h2>
+    <p class="as-a">As <em>a holder</em>, I want to send 100 tokens to another investor on the allowlist, so that a trade we agreed settles on-chain.</p>
+  </div>
+  <figure>
+    <div class="fig-scroll">
+      <svg class="d" viewBox="0 0 900 470" role="img" aria-label="Sequence of a transfer: the holder calls transfer; the token infers the kind, runs its own checks, builds the context and reads the policy once; it STATICCALLs checkTransfer and reverts unless TRANSFER_OK; balances change and Transfer is emitted; it asks wantsAfterTransfer and CALLs afterTransfer, where the policy updates its holder count; the call returns.">
+        <defs>
+          <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <rect class="b2" x="30" y="16" width="120" height="34" rx="7"/><text x="90" y="38" text-anchor="middle" class="bold">Holder</text>
+        <rect class="b2" x="320" y="16" width="160" height="34" rx="7"/><text x="400" y="38" text-anchor="middle" class="bold">Token</text>
+        <rect class="b2" x="680" y="16" width="160" height="34" rx="7"/><text x="760" y="38" text-anchor="middle" class="bold">Policy</text>
+        <line class="life" x1="90" y1="50" x2="90" y2="452"/>
+        <line class="life" x1="400" y1="50" x2="400" y2="452"/>
+        <line class="life" x1="760" y1="50" x2="760" y2="452"/>
+        <rect class="act" x="393" y="118" width="14" height="318"/>
+        <text x="386" y="458" text-anchor="end" class="m">reentrancy guard held throughout _move</text>
+        <!-- 1 -->
+        <line class="ln" x1="90" y1="74" x2="398" y2="74" marker-end="url(#m2)"/>
+        <text x="240" y="68" text-anchor="middle" class="mono">1  transfer(to, 100)</text>
+        <!-- self steps -->
+        <rect class="b2" x="415" y="90" width="260" height="24" rx="12"/><text x="427" y="106">2  kind = <tspan class="mono bold t-transfer">TRANSFER</tspan></text>
+        <rect class="b2" x="415" y="122" width="260" height="24" rx="12"/><text x="427" y="138">3  own checks: pause, frozen</text>
+        <rect class="b2" x="415" y="154" width="260" height="24" rx="12"/><text x="427" y="170">4  build context, read policy once</text>
+        <!-- 5 -->
+        <line class="ln" x1="407" y1="202" x2="758" y2="202" marker-end="url(#m2)"/>
+        <text x="582" y="196" text-anchor="middle"><tspan class="mono">5  checkTransfer(ctx)</tspan><tspan class="m"> · STATICCALL</tspan></text>
+        <line class="ln dash" x1="760" y1="228" x2="409" y2="228" marker-end="url(#m2)"/>
+        <text x="582" y="222" text-anchor="middle" class="m"><tspan class="acc">TRANSFER_OK</tspan> or a reason</text>
+        <rect class="b2" x="415" y="240" width="260" height="24" rx="12"/><text x="427" y="256"><tspan class="rej">anything else</tspan> → revert with the reason</text>
+        <!-- 6 -->
+        <rect class="b2" x="415" y="276" width="260" height="24" rx="12"/><text x="427" y="292">6  balances change · Transfer event</text>
+        <!-- 7 -->
+        <line class="ln" x1="407" y1="322" x2="758" y2="322" marker-end="url(#m2)"/>
+        <text x="582" y="316" text-anchor="middle"><tspan class="mono">7  wantsAfterTransfer()</tspan><tspan class="m"> · STATICCALL</tspan></text>
+        <line class="ln dash" x1="760" y1="344" x2="409" y2="344" marker-end="url(#m2)"/>
+        <text x="582" y="340" text-anchor="middle" class="m">true</text>
+        <!-- 8 -->
+        <line class="ln" x1="407" y1="376" x2="758" y2="376" marker-end="url(#m2)"/>
+        <text x="582" y="370" text-anchor="middle"><tspan class="mono">8  afterTransfer(ctx)</tspan><tspan class="m"> · CALL, same context</tspan></text>
+        <rect class="b2" x="690" y="388" width="140" height="24" rx="12"/><text x="760" y="404" text-anchor="middle" class="sm">holderCount ± 1</text>
+        <!-- 9 -->
+        <line class="ln dash" x1="393" y1="430" x2="92" y2="430" marker-end="url(#m2)"/>
+        <text x="240" y="424" text-anchor="middle" class="m">9  returns true</text>
+      </svg>
+    </div>
+    <figcaption><b>The policy is asked before anything moves, and told after.</b> Nothing external happens between steps 5 and 6, and the guard stops <code>afterTransfer</code> from starting another movement.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><div>The holder calls <code>transfer(to, 100)</code>. OpenZeppelin's ERC-20 routes every balance change to <code>_update</code>, which the token overrides. It picks the kind and calls <code>_move</code>, which does the rest under a reentrancy guard.</div></li>
+    <li><div>No forced transfer is pending and both addresses are non-zero, so the kind is <span class="k k-transfer">TRANSFER</span>.</div></li>
+    <li><div>The token's own checks run. If the token is paused it reverts with <code>EnforcedPause</code>. If part of the balance is frozen and 100 is more than the unfrozen part, it reverts with <code>ERC7943InsufficientUnfrozenBalance</code>, or with <code>ERC20InsufficientBalance</code> when 100 is more than the whole balance.</div></li>
+    <li><div>It builds the context and reads the policy address once. It uses that address for every call in this movement, so a policy replaced halfway cannot split the approval and the notification.</div></li>
+    <li><div>It calls <code>checkTransfer(ctx)</code> as a <code>STATICCALL</code>. Anything other than <code>TRANSFER_OK</code> reverts with <code>ERC8473PolicyRejected(reason)</code>. A revert, a policy with no code, or an answer shorter than 32 bytes reverts too.</div></li>
+    <li><div>The balances change and the ERC-20 <code>Transfer</code> event is emitted. Nothing external happens between step 5 and this one.</div></li>
+    <li><div>It asks <code>wantsAfterTransfer()</code>. The answer must be exactly 0 or 1.</div></li>
+    <li><div>The answer is true, so it calls <code>afterTransfer</code> with the identical context. The policy updates its holder count: minus one if the sender's balance is now zero, plus one if the receiver is new.</div></li>
+    <li><div>The guard is released and <code>transfer</code> returns <code>true</code>.</div></li>
+  </ol>
+  <div class="two">
+    <div class="prose">
+      <h3>What the policy sees</h3>
+      <div class="table-wrap"><table>
+        <tbody>
+          <tr><td><code>from</code>, <code>to</code></td><td>the holder, the receiver</td></tr>
+          <tr><td><code>amount</code>, <code>tokenId</code></td><td>100, and 0 for ERC-20</td></tr>
+          <tr><td><code>operator</code></td><td>the holder, or the spender for <code>transferFrom</code></td></tr>
+          <tr><td><code>kind</code>, <code>data</code></td><td><span class="k k-transfer">TRANSFER</span>, empty</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="prose">
+      <h3>When the answer is no</h3>
+      <ul class="plain">
+        <li>The receiver is not on the allowlist: <code>RECEIVER_NOT_ELIGIBLE</code>.</li>
+        <li>The holder is no longer on it: <code>SENDER_NOT_ELIGIBLE</code>.</li>
+        <li>The receiver would be a new holder and the cap is full: <code>MAX_HOLDERS</code>.</li>
+        <li>The token is paused, or the tokens are frozen: the token's own error, before the policy is asked.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="story" id="story-wallet">
+  <div class="story-head">
+    <p class="story-num">Story 2 · pre-flight</p>
+    <h2>A wallet checks a transfer before sending it, and explains a no</h2>
+    <p class="as-a">As <em>a wallet developer</em>, I want to know before my user signs whether a transfer will go through, and why not, so that they never pay gas for a transaction that fails.</p>
+  </div>
+  <figure>
+    <div class="fig-scroll">
+      <svg class="d" viewBox="0 0 900 440" role="img" aria-label="A wallet's pre-flight: the wallet calls canTransfer; the token sets the kind to TRANSFER and runs its own checks, then STATICCALLs checkTransfer with operator equal to from; the policy returns RECEIVER_NOT_ELIGIBLE and the token returns false. The wallet then simulates transfer with eth_call from the holder; the token asks the policy again, gets the same reason, and reverts with ERC8473PolicyRejected; the wallet matches the reason against keccak256 of RECEIVER_NOT_ELIGIBLE and shows a message.">
+        <defs>
+          <marker id="m9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <rect class="b2" x="30" y="16" width="120" height="34" rx="7"/><text x="90" y="38" text-anchor="middle" class="bold">Wallet</text>
+        <rect class="b2" x="320" y="16" width="160" height="34" rx="7"/><text x="400" y="38" text-anchor="middle" class="bold">Token</text>
+        <rect class="b2" x="680" y="16" width="160" height="34" rx="7"/><text x="760" y="38" text-anchor="middle" class="bold">Policy</text>
+        <line class="life" x1="90" y1="50" x2="90" y2="430"/>
+        <line class="life" x1="400" y1="50" x2="400" y2="430"/>
+        <line class="life" x1="760" y1="50" x2="760" y2="430"/>
+        <!-- 1 to 4: canTransfer -->
+        <line class="ln" x1="90" y1="76" x2="398" y2="76" marker-end="url(#m9)"/>
+        <text x="244" y="70" text-anchor="middle" class="mono">1  canTransfer(from, to, 100)</text>
+        <rect class="b2" x="415" y="90" width="250" height="24" rx="12"/><text x="427" y="106">2  kind = <tspan class="mono bold t-transfer">TRANSFER</tspan> · own checks</text>
+        <line class="ln" x1="402" y1="138" x2="758" y2="138" marker-end="url(#m9)"/>
+        <text x="580" y="132" text-anchor="middle"><tspan class="mono">3  checkTransfer(ctx)</tspan><tspan class="m"> · operator = from</tspan></text>
+        <line class="ln dash" x1="760" y1="164" x2="404" y2="164" marker-end="url(#m9)"/>
+        <text x="580" y="158" text-anchor="middle" class="mono sm rej">RECEIVER_NOT_ELIGIBLE</text>
+        <line class="ln dash" x1="400" y1="196" x2="92" y2="196" marker-end="url(#m9)"/>
+        <text x="244" y="190" text-anchor="middle" class="m">4  <tspan class="rej">false</tspan></text>
+        <!-- divider -->
+        <line class="tick dash" x1="20" y1="222" x2="880" y2="222"/>
+        <text x="880" y="214" text-anchor="end" class="m">to learn why, the wallet simulates the transfer</text>
+        <!-- 5 to 7: simulated transfer -->
+        <line class="ln" x1="90" y1="256" x2="398" y2="256" marker-end="url(#m9)"/>
+        <text x="244" y="250" text-anchor="middle" class="mono">5  transfer(to, 100)</text>
+        <text x="244" y="272" text-anchor="middle" class="m">eth_call, sent from the holder</text>
+        <line class="ln" x1="402" y1="294" x2="758" y2="294" marker-end="url(#m9)"/>
+        <text x="580" y="288" text-anchor="middle" class="mono">6  checkTransfer(ctx)</text>
+        <line class="ln dash" x1="760" y1="320" x2="404" y2="320" marker-end="url(#m9)"/>
+        <text x="580" y="314" text-anchor="middle" class="mono sm rej">RECEIVER_NOT_ELIGIBLE</text>
+        <line class="ln dash" x1="400" y1="350" x2="92" y2="350" marker-end="url(#m9)"/>
+        <text x="244" y="344" text-anchor="middle" class="mono sm">7  revert ERC8473PolicyRejected(reason)</text>
+        <!-- 8 -->
+        <rect class="b" x="20" y="366" width="370" height="58" rx="8"/>
+        <text x="34" y="388" class="mono sm">8  reason == keccak256("RECEIVER_NOT_ELIGIBLE")</text>
+        <text x="34" y="410">shows: “The receiver can't hold this token yet.”</text>
+      </svg>
+    </div>
+    <figcaption><b>The pre-flight says whether; the simulated transfer says why.</b> Both reach the same policy with the same kind, amount and accounts. A <span class="k k-transfer">TRANSFER</span> decision may not depend on <code>operator</code>, so the pre-flight's <code>operator</code> = <code>from</code> and the simulation's caller give the same answer.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><div>The wallet calls <code>canTransfer(from, to, 100)</code> as a read-only call. It never reverts.</div></li>
+    <li><div>The token picks the kind as the transfer would, and runs its own checks. If the token is paused or the amount is frozen, it answers false here without asking the policy.</div></li>
+    <li><div>It builds the same context the transfer would build, except that <code>operator</code> is <code>from</code>, and calls <code>checkTransfer</code> in a way that cannot revert.</div></li>
+    <li><div>The policy rejects, so <code>canTransfer</code> returns false. A <code>bool</code> carries no reason.</div></li>
+    <li><div>To find out why, the wallet simulates the transfer itself with <code>eth_call</code>, sent from the holder's address. Nothing is broadcast.</div></li>
+    <li><div>The token runs the real movement path, which asks the policy again.</div></li>
+    <li><div>The simulation reverts with <code>ERC8473PolicyRejected(reason)</code>, and the wallet decodes the reason from the revert data. A pause or frozen tokens would come back as the token's own error, such as <code>EnforcedPause</code> or <code>ERC7943InsufficientUnfrozenBalance</code>, instead.</div></li>
+    <li><div>The wallet compares the reason with <code>keccak256</code> of the common names and shows a message. A reason it does not recognise is still a no: it shows a generic message, and never treats the value as permission.</div></li>
+  </ol>
+  <div class="two">
+    <div class="prose">
+      <h3>Messages a wallet might show</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Reason</th><th>Message (an example)</th></tr></thead>
+        <tbody>
+          <tr><td><code>SENDER_NOT_ELIGIBLE</code></td><td>Your account can't send this token right now.</td></tr>
+          <tr><td><code>RECEIVER_NOT_ELIGIBLE</code></td><td>The receiver can't hold this token yet.</td></tr>
+          <tr><td><code>LOCKED_UP</code></td><td>These tokens are still in a lock-up period.</td></tr>
+          <tr><td><code>MAX_HOLDERS</code></td><td>The token has reached its limit on holders.</td></tr>
+          <tr><td><code>WINDOW_CLOSED</code></td><td>Transfers are closed at the moment. Try again later.</td></tr>
+          <tr><td><code>KIND_NOT_ALLOWED</code></td><td>This token can't be moved this way.</td></tr>
+          <tr><td>anything else</td><td>The token's rules don't allow this transfer.</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="prose">
+      <h3>Good to know</h3>
+      <ul class="plain">
+        <li>The simulation is a wallet technique, not something the ERC requires. The ERC gives the error and the common names, which is what makes the technique work across tokens.</li>
+        <li>Any account may call a policy's checks with any context, so a wallet can also read <code>policy()</code> and call <code>checkTransfer</code> directly. That returns the policy's reason, but skips the token's own checks.</li>
+        <li>An answer is a snapshot. The state can change between the check and the transaction, so the transaction can still fail.</li>
+        <li><code>canTransfer</code> leaves a plain balance shortfall, allowances and roles to the base standard, so check those as for any ERC-20.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="story" id="story-mint">
+  <div class="story-head">
+    <p class="story-num">Story 3 · <span class="k k-mint">MINT</span> and <span class="k k-burn">BURN</span></p>
+    <h2>An issuer mints to a new investor, and an investor redeems by burning</h2>
+    <p class="as-a">As <em>an issuer</em>, I want to issue 500 tokens to an investor who just passed onboarding, so that the subscription settles, and I want the holder cap to count them. As <em>an investor</em>, I want to burn my tokens when I redeem.</p>
+  </div>
+  <figure>
+    <div class="fig-scroll">
+      <svg class="d" viewBox="0 0 900 450" role="img" aria-label="Sequence of a mint: the issuer, who holds the minter role, calls mint; the token sets the kind to MINT because from is zero, runs its pause check and builds the context with from zero and operator the issuer; it STATICCALLs checkTransfer, where the policy checks the receiver and the holder cap; balances change and Transfer is emitted from the zero address; the token asks wantsAfterTransfer, and afterTransfer adds the new holder to the count; the call returns.">
+        <defs>
+          <marker id="m10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <rect class="b2" x="30" y="16" width="120" height="34" rx="7"/><text x="90" y="38" text-anchor="middle" class="bold">Issuer</text>
+        <rect class="b2" x="320" y="16" width="160" height="34" rx="7"/><text x="400" y="38" text-anchor="middle" class="bold">Token</text>
+        <rect class="b2" x="680" y="16" width="160" height="34" rx="7"/><text x="760" y="38" text-anchor="middle" class="bold">Policy</text>
+        <line class="life" x1="90" y1="50" x2="90" y2="430"/>
+        <line class="life" x1="400" y1="50" x2="400" y2="430"/>
+        <line class="life" x1="760" y1="50" x2="760" y2="430"/>
+        <rect class="act" x="393" y="118" width="14" height="282"/>
+        <text x="386" y="442" text-anchor="end" class="m">reentrancy guard held in _move</text>
+        <line class="ln" x1="90" y1="74" x2="398" y2="74" marker-end="url(#m10)"/>
+        <text x="244" y="68" text-anchor="middle" class="mono">1  mint(to, 500)</text>
+        <text x="244" y="92" text-anchor="middle" class="m">only MINTER_ROLE</text>
+        <rect class="b2" x="415" y="90" width="270" height="24" rx="12"/><text x="427" y="106">2  kind = <tspan class="mono bold t-mint">MINT</tspan> · from is zero</text>
+        <rect class="b2" x="415" y="122" width="270" height="24" rx="12"/><text x="427" y="138">3  own checks: pause</text>
+        <rect class="b2" x="415" y="154" width="270" height="24" rx="12"/><text x="427" y="170">4  context: from = 0, operator = issuer</text>
+        <line class="ln" x1="407" y1="200" x2="758" y2="200" marker-end="url(#m10)"/>
+        <text x="582" y="194" text-anchor="middle"><tspan class="mono">5  checkTransfer(ctx)</tspan><tspan class="m"> · STATICCALL</tspan></text>
+        <rect class="b2" x="640" y="212" width="240" height="24" rx="12"/><text x="760" y="228" text-anchor="middle" class="sm">receiver allowlisted? room under the cap?</text>
+        <line class="ln dash" x1="760" y1="262" x2="409" y2="262" marker-end="url(#m10)"/>
+        <text x="582" y="256" text-anchor="middle" class="m"><tspan class="acc">TRANSFER_OK</tspan> or a reason</text>
+        <rect class="b2" x="415" y="276" width="270" height="24" rx="12"/><text x="427" y="292">6  balances change · Transfer(0, to, 500)</text>
+        <line class="ln" x1="407" y1="322" x2="758" y2="322" marker-end="url(#m10)"/>
+        <text x="582" y="316" text-anchor="middle"><tspan class="mono">7  wantsAfterTransfer()</tspan><tspan class="m"> · STATICCALL</tspan></text>
+        <line class="ln dash" x1="760" y1="344" x2="409" y2="344" marker-end="url(#m10)"/>
+        <text x="582" y="340" text-anchor="middle" class="m">true</text>
+        <line class="ln" x1="407" y1="376" x2="758" y2="376" marker-end="url(#m10)"/>
+        <text x="582" y="370" text-anchor="middle"><tspan class="mono">8  afterTransfer(ctx)</tspan><tspan class="m"> · holderCount + 1</tspan></text>
+        <line class="ln dash" x1="393" y1="416" x2="92" y2="416" marker-end="url(#m10)"/>
+        <text x="244" y="410" text-anchor="middle" class="m">9  returns</text>
+      </svg>
+    </div>
+    <figcaption><b>A mint is an ordinary movement with no sender.</b> The zero address passes the account checks, so the policy's checks fall on the receiver, and the holder cap applies to issuance as it does to transfers.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><div>The issuer calls <code>mint(to, 500)</code>. Only an account with <code>MINTER_ROLE</code> may. That role check is access control, which stays outside the policy.</div></li>
+    <li><div><code>from</code> is the zero address, so the kind is <span class="k k-mint">MINT</span>.</div></li>
+    <li><div>The token's own checks run. A pause stops a mint. There is no sender, so no frozen amount applies.</div></li>
+    <li><div>The context has <code>from</code> = 0 and <code>operator</code> = the issuer. The policy may not use <code>operator</code> for a mint.</div></li>
+    <li><div>The policy checks that the receiver is on the allowlist, and that a new holder fits under the cap. A receiver who already holds tokens is never capped.</div></li>
+    <li><div>The balance changes and <code>Transfer(address(0), to, 500)</code> is emitted.</div></li>
+    <li><div>The token asks <code>wantsAfterTransfer()</code>. The example policy keeps a count, so it answers true.</div></li>
+    <li><div>In <code>afterTransfer</code>, the receiver's balance now equals the amount just received, so the policy counts a new holder.</div></li>
+    <li><div>The mint returns.</div></li>
+  </ol>
+  <div class="two">
+    <div class="prose">
+      <h3>What the policy sees</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Field</th><th>Mint</th><th>Burn</th></tr></thead>
+        <tbody>
+          <tr><td><code>from</code></td><td>0</td><td>the investor</td></tr>
+          <tr><td><code>to</code></td><td>the investor</td><td>0</td></tr>
+          <tr><td><code>operator</code></td><td>the issuer</td><td>the investor</td></tr>
+          <tr><td><code>kind</code></td><td><span class="k k-mint">MINT</span></td><td><span class="k k-burn">BURN</span></td></tr>
+          <tr><td><code>data</code></td><td>empty</td><td>empty</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="prose">
+      <h3>The burn</h3>
+      <p>The investor calls <code>burn(amount)</code> on their own tokens. <code>to</code> is zero, so the kind is <span class="k k-burn">BURN</span>. The pause and the frozen amount apply, the policy checks that the investor may send, and the cap never blocks a burn. If the investor burns everything, <code>afterTransfer</code> removes them from the count.</p>
+      <h3>The pre-flights</h3>
+      <p><code>canTransfer(address(0), to, 500)</code> predicts the mint, with <code>operator</code> = 0. <code>canTransfer(investor, address(0), amount)</code> predicts the burn. Neither looks at the mint role.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="story" id="story-forced">
+  <div class="story-head">
+    <p class="story-num">Story 4 · <span class="k k-forced">FORCED</span></p>
+    <h2>A court order moves tokens from a holder</h2>
+    <p class="as-a">As <em>the token's enforcer</em>, I want to move 100 tokens out of a holder's account under a court order, even though the token is paused, part of the balance is frozen and the holder cap is full, so that the order is carried out.</p>
+  </div>
+  <figure>
+    <div class="fig-scroll">
+      <svg class="d" viewBox="0 0 900 412" role="img" aria-label="Sequence of a forced transfer: the enforcer calls forcedTransfer; the token unfreezes only the frozen part moved and emits Frozen, sets a transient flag, and runs _update, which passes kind FORCED to _move, skipping pause and frozen checks; the policy checks only the receiver and ignores the cap; balances change; afterTransfer counts the receiver; ForcedTransfer is emitted last.">
+        <defs>
+          <marker id="m5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <rect class="b2" x="30" y="16" width="120" height="34" rx="7"/><text x="90" y="38" text-anchor="middle" class="bold">Enforcer</text>
+        <rect class="b2" x="320" y="16" width="160" height="34" rx="7"/><text x="400" y="38" text-anchor="middle" class="bold">Token</text>
+        <rect class="b2" x="680" y="16" width="160" height="34" rx="7"/><text x="760" y="38" text-anchor="middle" class="bold">Policy</text>
+        <line class="life" x1="90" y1="50" x2="90" y2="400"/>
+        <line class="life" x1="400" y1="50" x2="400" y2="400"/>
+        <line class="life" x1="760" y1="50" x2="760" y2="400"/>
+        <rect class="act" x="393" y="182" width="14" height="178"/>
+        <text x="386" y="356" text-anchor="end" class="m">guard held in _move</text>
+        <line class="ln" x1="90" y1="74" x2="398" y2="74" marker-end="url(#m5)"/>
+        <text x="240" y="68" text-anchor="middle" class="mono">1  forcedTransfer(from, to, 100)</text>
+        <rect class="b2" x="415" y="90" width="300" height="24" rx="12"/><text x="427" y="106">2  unfreeze only the frozen part · emit Frozen</text>
+        <rect class="b2" x="415" y="122" width="300" height="24" rx="12"/><text x="427" y="138">3  set _forcedPending (transient)</text>
+        <rect class="b2" x="415" y="154" width="300" height="24" rx="12"/><text x="427" y="170">4  _update: kind = <tspan class="mono bold t-forced">FORCED</tspan>, flag cleared</text>
+        <rect class="b2" x="415" y="186" width="300" height="24" rx="12"/><text x="427" y="202">5  pause and frozen checks skipped</text>
+        <line class="ln" x1="407" y1="236" x2="758" y2="236" marker-end="url(#m5)"/>
+        <text x="582" y="230" text-anchor="middle" class="mono">6  checkTransfer(ctx)</text>
+        <rect class="b2" x="660" y="248" width="200" height="24" rx="12"/><text x="760" y="264" text-anchor="middle" class="sm">receiver eligible? cap not applied</text>
+        <line class="ln dash" x1="760" y1="290" x2="409" y2="290" marker-end="url(#m5)"/>
+        <text x="582" y="284" text-anchor="middle" class="m acc">TRANSFER_OK</text>
+        <rect class="b2" x="415" y="304" width="300" height="24" rx="12"/><text x="427" y="320">7  balances change · Transfer event</text>
+        <line class="ln" x1="407" y1="350" x2="758" y2="350" marker-end="url(#m5)"/>
+        <text x="582" y="344" text-anchor="middle"><tspan class="mono">8  afterTransfer(ctx)</tspan><tspan class="m"> · if wanted, same context</tspan></text>
+        <rect class="b2" x="415" y="366" width="300" height="24" rx="12"/><text x="427" y="382">9  emit ForcedTransfer</text>
+      </svg>
+    </div>
+    <figcaption><b>Enforcement skips the token's pause and frozen checks, but not the policy.</b> The receiver must still be eligible, and the new holder is still counted, though the cap does not apply to it.</figcaption>
+  </figure>
+  <div class="prose">
+    <p>Only an account with <code>ENFORCER_ROLE</code> may call <code>forcedTransfer(from, to, 100)</code>. The token unfreezes only what the move needs, and only when frozen tokens move: if the unfrozen part covers the amount, nothing is unfrozen and no <code>Frozen</code> event is emitted. With 1,000 held and 950 frozen, moving 100 leaves 900 frozen. A freeze above the balance keeps withholding: with 1,500 frozen, moving 100 leaves 1,400. The specification requires <code>Frozen</code> before <code>Transfer</code>. The reference emits <code>ForcedTransfer</code> last, after the policy's callback.</p>
+    <p>The token marks the next movement as forced with a flag in transient storage, and <code>_update</code> clears it before anything else. So a forced transfer cannot lend its kind to an ordinary transfer later in the same transaction. The test suite checks this with a helper contract that does both in one call while the token is paused, and the second one reverts with <code>EnforcedPause</code>.</p>
+  </div>
+  <div class="two">
+    <div class="prose">
+      <h3>What the policy sees</h3>
+      <div class="table-wrap"><table>
+        <tbody>
+          <tr><td><code>from</code>, <code>to</code></td><td>the holder, the receiver the order names</td></tr>
+          <tr><td><code>operator</code></td><td>the enforcer</td></tr>
+          <tr><td><code>kind</code>, <code>data</code></td><td><span class="k k-forced">FORCED</span>, empty in the reference</td></tr>
+        </tbody>
+      </table></div>
+      <p>A token may pass a reference to the legal order in <code>data</code> for <span class="k k-forced">FORCED</span>, as long as it documents the encoding.</p>
+    </div>
+    <div class="prose">
+      <h3>When the answer is no</h3>
+      <ul class="plain">
+        <li>The receiver is not eligible: <code>RECEIVER_NOT_ELIGIBLE</code>. Enforcement skips the token's own checks, not the policy's check on the receiver.</li>
+        <li>The sender is not checked, and the cap does not apply. The new holder is still counted.</li>
+        <li><code>canTransfer</code> does not predict a forced transfer, because a policy may decide it by who the enforcer is (<code>OPERATOR_NOT_ALLOWED</code>).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="story" id="story-executed">
+  <div class="story-head">
+    <p class="story-num">Story 5 · <span class="k k-executed">EXECUTED</span></p>
+    <h2>A transfer agent settles a holder-signed instruction</h2>
+    <p class="as-a">As <em>a transfer agent</em>, I want to carry out a transfer the holder signed off-chain, inside the settlement window the policy allows, so that the trade settles without the holder sending a transaction.</p>
+  </div>
+  <figure>
+    <div class="fig-scroll">
+      <svg class="d" viewBox="0 0 940 472" role="img" aria-label="Sequence of an executed movement: the holder signs an instruction off-chain; the executor calls executeInstruction; the token checks the role, the receiver, the deadline, whether the reference was used, the named executor and the signature; it records the reference, emits InstructionExecuted and calls _move with kind EXECUTED; its own checks run; it STATICCALLs checkTransfer and reverts unless TRANSFER_OK, which also undoes the record; balances change; it notifies the policy with the same context; the call returns.">
+        <defs>
+          <marker id="m8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <rect class="b2" x="20" y="16" width="120" height="34" rx="7"/><text x="80" y="38" text-anchor="middle" class="bold">Holder</text>
+        <rect class="b2" x="180" y="16" width="120" height="34" rx="7"/><text x="240" y="38" text-anchor="middle" class="bold">Executor</text>
+        <rect class="b2" x="400" y="16" width="160" height="34" rx="7"/><text x="480" y="38" text-anchor="middle" class="bold">Token</text>
+        <rect class="b2" x="760" y="16" width="160" height="34" rx="7"/><text x="840" y="38" text-anchor="middle" class="bold">Policy</text>
+        <line class="life" x1="80" y1="50" x2="80" y2="460"/>
+        <line class="life" x1="240" y1="50" x2="240" y2="460"/>
+        <line class="life" x1="480" y1="50" x2="480" y2="460"/>
+        <line class="life" x1="840" y1="50" x2="840" y2="460"/>
+        <rect class="act" x="473" y="212" width="14" height="240"/>
+        <text x="466" y="428" text-anchor="end" class="m">guard held in _move</text>
+        <!-- 1 -->
+        <line class="ln dash" x1="80" y1="76" x2="238" y2="76" marker-end="url(#m8)"/>
+        <text x="160" y="70" text-anchor="middle" class="mono sm">1  signs, off-chain</text>
+        <!-- 2 -->
+        <line class="ln" x1="240" y1="106" x2="478" y2="106" marker-end="url(#m8)"/>
+        <text x="359" y="100" text-anchor="middle" class="mono sm">2  executeInstruction(i, sig)</text>
+        <!-- token steps -->
+        <rect class="b2" x="495" y="116" width="290" height="24" rx="12"/><text x="507" y="132">3  role · zero to · deadline · unused</text>
+        <rect class="b2" x="495" y="148" width="290" height="24" rx="12"/><text x="507" y="164">4  executor · signature: ECDSA or ERC-1271</text>
+        <rect class="b2" x="495" y="180" width="290" height="24" rx="12"/><text x="507" y="196">5  record the reference · emit event</text>
+        <rect class="b2" x="495" y="212" width="290" height="24" rx="12"/><text x="507" y="228">6  _move: kind = <tspan class="mono bold t-executed">EXECUTED</tspan></text>
+        <rect class="b2" x="495" y="244" width="290" height="24" rx="12"/><text x="507" y="260">7  own checks: pause, frozen</text>
+        <!-- 8 -->
+        <line class="ln" x1="487" y1="298" x2="838" y2="298" marker-end="url(#m8)"/>
+        <text x="662" y="292" text-anchor="middle"><tspan class="mono">8  checkTransfer(ctx)</tspan><tspan class="m"> · STATICCALL</tspan></text>
+        <line class="ln dash" x1="840" y1="322" x2="489" y2="322" marker-end="url(#m8)"/>
+        <text x="662" y="317" text-anchor="middle" class="m"><tspan class="acc">TRANSFER_OK</tspan> or a reason</text>
+        <rect class="b2" x="495" y="332" width="290" height="24" rx="12"/><text x="507" y="348"><tspan class="rej">anything else</tspan> → revert, record undone</text>
+        <!-- 9 -->
+        <rect class="b2" x="495" y="364" width="290" height="24" rx="12"/><text x="507" y="380">9  balances change · Transfer event</text>
+        <!-- 10 -->
+        <line class="ln" x1="487" y1="412" x2="838" y2="412" marker-end="url(#m8)"/>
+        <text x="662" y="406" text-anchor="middle"><tspan class="mono">10  afterTransfer(ctx)</tspan><tspan class="m"> · if wanted, same context</tspan></text>
+        <!-- 11 -->
+        <line class="ln dash" x1="473" y1="448" x2="242" y2="448" marker-end="url(#m8)"/>
+        <text x="359" y="442" text-anchor="middle" class="m">11  returns</text>
+      </svg>
+    </div>
+    <figcaption><b>The same path as every other movement, after the instruction's own checks.</b> The signature check, the only external call before <code>_move</code>, is a static call and finishes before the policy is asked. From step 6 on, the code is the code a transfer runs, so the pause, the frozen amount and the policy all apply.</figcaption>
+  </figure>
+  <div class="two">
+    <div class="prose">
+      <h3>The instruction</h3>
+      <p><code>ExampleExecutorToken</code> extends <code>ExampleToken</code> with a settlement channel. The holder signs an EIP-712 <code>Instruction(from, to, amount, instructionRef, deadline, executor)</code>, in a domain that names the token and the chain. The signature covers every field, so the executor can change none of them. A holder that is a contract signs through ERC-1271.</p>
+      <p>Only an account with <code>EXECUTOR_ROLE</code> can call <code>executeInstruction</code>. That restriction, which does not depend on the instruction, is what makes the movement <span class="k k-executed">EXECUTED</span> and not <span class="k k-transfer">TRANSFER</span>. The <code>executor</code> field narrows it further: a non-zero value names the one account that may carry it out, and zero means any account with the role.</p>
+      <p>The policy sees <code>operator</code> = the executor and <code>data</code> = <code>abi.encode(bytes32 instructionRef, uint256 deadline)</code>. The token enforces the deadline itself; the policy only reads it.</p>
+    </div>
+    <div class="prose">
+      <h3>One use, any order</h3>
+      <p>A reference can be used once per holder, in any order. With a sequential nonce, one expired instruction would hold up every later one from that holder until something used up its nonce. When the policy rejects, the whole call reverts, including the record that the reference was used, so the instruction can be tried again until its deadline. An instruction refused while the window was closed can still settle when it opens.</p>
+      <h3>When the answer is no</h3>
+      <ul class="plain">
+        <li>The window is closed: the policy's reason, <code>WINDOW_CLOSED</code> in <code>ExecutedRulesPolicy</code>.</li>
+        <li>Expired, already used, the wrong executor or a bad signature: the executor token's own errors for the instruction, before the policy is asked.</li>
+        <li>The pre-flight is <code>canExecute(instruction, signature, executor)</code>. It takes the executor as an argument and builds the context the execution would.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="prose">
+    <h3>The holder changes their mind</h3>
+    <p>Because a refused instruction stays valid until its deadline, the holder needs a way to stop it. Any holder can call <code>cancelInstruction(instructionRef)</code>, which writes the same record a settlement writes. It is not a movement: it needs no role, does not ask the policy, and works while the token is paused.</p>
+  </div>
+  <figure>
+    <div class="fig-scroll">
+      <svg class="d" viewBox="0 0 900 276" role="img" aria-label="A holder cancels an instruction: the holder calls cancelInstruction with the reference; with no role and no policy call, the token checks that the reference is unused, records it and emits InstructionCancelled. Later the executor calls executeInstruction with that instruction; the reference is already used, so the token reverts with ExampleExecutorToken_InstructionUsed.">
+        <defs>
+          <marker id="m11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <rect class="b2" x="30" y="16" width="120" height="34" rx="7"/><text x="90" y="38" text-anchor="middle" class="bold">Holder</text>
+        <rect class="b2" x="370" y="16" width="160" height="34" rx="7"/><text x="450" y="38" text-anchor="middle" class="bold">Token</text>
+        <rect class="b2" x="750" y="16" width="120" height="34" rx="7"/><text x="810" y="38" text-anchor="middle" class="bold">Executor</text>
+        <line class="life" x1="90" y1="50" x2="90" y2="266"/>
+        <line class="life" x1="450" y1="50" x2="450" y2="266"/>
+        <line class="life" x1="810" y1="50" x2="810" y2="266"/>
+        <line class="ln" x1="90" y1="76" x2="448" y2="76" marker-end="url(#m11)"/>
+        <text x="269" y="70" text-anchor="middle" class="mono">1  cancelInstruction(ref)</text>
+        <text x="269" y="94" text-anchor="middle" class="m">no role · no policy call · works while paused</text>
+        <rect class="b2" x="465" y="110" width="260" height="24" rx="12"/><text x="477" y="126">2  reference unused? record it</text>
+        <rect class="b2" x="465" y="142" width="260" height="24" rx="12"/><text x="477" y="158">3  emit InstructionCancelled</text>
+        <line class="ln" x1="810" y1="196" x2="452" y2="196" marker-end="url(#m11)"/>
+        <text x="631" y="190" text-anchor="middle" class="mono">4  executeInstruction(i, sig)</text>
+        <rect class="b2" x="465" y="208" width="260" height="24" rx="12"/><text x="477" y="224">5  reference already used</text>
+        <line class="ln dash" x1="450" y1="254" x2="808" y2="254" marker-end="url(#m11)"/>
+        <text x="631" y="248" text-anchor="middle" class="mono sm"><tspan class="rej">6  revert</tspan> ExampleExecutorToken_InstructionUsed</text>
+      </svg>
+    </div>
+    <figcaption><b>A cancel and a settlement write the same record, so only one of them can happen.</b> If the executor settles first, the cancel reverts with the same error, so a holder whose cancel lost the race finds out.</figcaption>
+  </figure>
+</section>
+
+<!-- 6 -->
+<section class="story" id="story-install">
+  <div class="story-head">
+    <p class="story-num">Story 6 · installation</p>
+    <h2>An issuer replaces the policy</h2>
+    <p class="as-a">As <em>the token's admin</em>, I want to move the token to a new compliance provider's policy without redeploying the token, so that holders keep their balances and the new rules apply from the next movement.</p>
+  </div>
+  <figure>
+    <div class="fig-scroll">
+      <svg class="d" viewBox="0 0 940 410" role="img" aria-label="Installation: the admin calls setPolicy with policy B and a holder list; the token checks B's ERC-165 support, emits PolicyChanged, switches to B, then calls B.onInstall with the previous policy A and the list; B reads balances and the total supply from the token and sets its count; the outgoing policy A is never called.">
+        <defs>
+          <marker id="m6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <rect class="b2" x="20" y="16" width="120" height="34" rx="7"/><text x="80" y="38" text-anchor="middle" class="bold">Admin</text>
+        <rect class="b2" x="250" y="16" width="160" height="34" rx="7"/><text x="330" y="38" text-anchor="middle" class="bold">Token</text>
+        <rect class="b2" x="540" y="16" width="160" height="34" rx="7"/><text x="620" y="38" text-anchor="middle" class="bold">New policy B</text>
+        <rect class="b2" x="780" y="16" width="150" height="34" rx="7"/><text x="855" y="38" text-anchor="middle" class="m bold">Outgoing policy A</text>
+        <line class="life" x1="80" y1="50" x2="80" y2="398"/>
+        <line class="life" x1="330" y1="50" x2="330" y2="398"/>
+        <line class="life" x1="620" y1="50" x2="620" y2="398"/>
+        <line class="life" x1="855" y1="50" x2="855" y2="398"/>
+        <rect class="act" x="323" y="66" width="14" height="318"/>
+        <line class="ln" x1="80" y1="76" x2="321" y2="76" marker-end="url(#m6)"/>
+        <text x="200" y="70" text-anchor="middle" class="mono">1  setPolicy(B, list)</text>
+        <line class="ln" x1="337" y1="110" x2="618" y2="110" marker-end="url(#m6)"/>
+        <text x="478" y="104" text-anchor="middle" class="mono sm">2  supportsInterface × 3 (ERC-165)</text>
+        <line class="ln dash" x1="620" y1="132" x2="339" y2="132" marker-end="url(#m6)"/>
+        <text x="478" y="127" text-anchor="middle" class="m">true</text>
+        <rect class="b2" x="345" y="146" width="230" height="24" rx="12"/><text x="357" y="162">3  emit PolicyChanged(A, B)</text>
+        <rect class="b2" x="345" y="178" width="230" height="24" rx="12"/><text x="357" y="194">4  policy = B</text>
+        <line class="ln" x1="337" y1="228" x2="618" y2="228" marker-end="url(#m6)"/>
+        <text x="478" y="222" text-anchor="middle"><tspan class="mono">5  onInstall(token, A, list)</tspan><tspan class="m"> · CALL</tspan></text>
+        <line class="ln" x1="620" y1="262" x2="339" y2="262" marker-end="url(#m6)"/>
+        <text x="478" y="256" text-anchor="middle" class="mono sm">6  balanceOf × n · totalSupply()</text>
+        <rect class="b2" x="520" y="278" width="200" height="24" rx="12"/><text x="620" y="294" text-anchor="middle" class="sm">7  sum = supply? set holderCount</text>
+        <line class="ln dash" x1="620" y1="330" x2="339" y2="330" marker-end="url(#m6)"/>
+        <text x="478" y="324" text-anchor="middle" class="m">returns</text>
+        <line class="ln dash" x1="323" y1="372" x2="82" y2="372" marker-end="url(#m6)"/>
+        <text x="200" y="366" text-anchor="middle" class="m">installed</text>
+        <text x="855" y="226" text-anchor="middle" class="m">never called</text>
+        <text x="855" y="242" text-anchor="middle" class="m">during the swap</text>
+      </svg>
+    </div>
+    <figcaption><b>The new policy initialises inside the installation, and the old one has no say.</b> If any step reverts, the whole call reverts and A stays installed. Because A is never asked, a broken or hostile policy cannot block its own replacement.</figcaption>
+  </figure>
+  <div class="prose">
+    <p>Only an account with <code>DEFAULT_ADMIN_ROLE</code> may call <code>setPolicy(policy, data)</code> on the reference token. Who may install is outside the ERC. In step 2 the token uses OpenZeppelin's <code>ERC165Checker</code>, which makes three calls: <code>0x01ffc9a7</code> must answer true, <code>0xffffffff</code> false, and then <code>0x9cb56a99</code> true. The token passes <code>data</code> to <code>onInstall</code> unchanged, and the policy decides what it means.</p>
+    <p><code>ExamplePolicy</code> takes a list of addresses in strictly ascending order. It adds up their balances and counts the non-zero ones. If the sum equals <code>totalSupply()</code>, nobody outside the list holds tokens, so the count is exact at that moment, however old the list is. Accounts that hold nothing may be listed, so the list can name everyone who might hold by the time a timelocked installation runs.</p>
+  </div>
+  <figure>
+    <div class="fig-scroll">
+      <svg class="d" viewBox="0 0 900 140" role="img" aria-label="Timeline of A, then B, then A again: while B is installed A sees no movements and its count goes stale; reinstalling A calls onInstall, which recounts from the list.">
+        <defs>
+          <marker id="m7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <rect class="seg-a" x="20" y="48" width="280" height="40" rx="6"/><text x="160" y="73" text-anchor="middle" class="bold">A installed</text>
+        <rect class="seg-b" x="300" y="48" width="300" height="40" rx="0"/><text x="450" y="73" text-anchor="middle" class="bold">B installed</text>
+        <rect class="seg-a" x="600" y="48" width="270" height="40" rx="6"/><text x="735" y="73" text-anchor="middle" class="bold">A installed again</text>
+        <line class="ln" x1="870" y1="68" x2="888" y2="68" marker-end="url(#m7)"/>
+        <line class="tick" x1="300" y1="30" x2="300" y2="96"/>
+        <line class="tick" x1="600" y1="30" x2="600" y2="96"/>
+        <text x="300" y="22" text-anchor="middle" class="mono sm">setPolicy(B, list)</text>
+        <text x="600" y="22" text-anchor="middle" class="mono sm">setPolicy(A, list)</text>
+        <text x="160" y="114" text-anchor="middle" class="m">A counts every movement</text>
+        <text x="450" y="114" text-anchor="middle" class="m">A sees nothing: its count goes stale</text>
+        <text x="735" y="114" text-anchor="middle" class="m">onInstall recounts from the list</text>
+      </svg>
+    </div>
+    <figcaption><b>A policy cannot tell on its own that it was swapped out and back.</b> Without the hook, A would come back with its old count: too high and it turns away holders below the cap, too low and it admits holders past it, and a full exit can underflow and revert. The hook makes the recount part of every installation.</figcaption>
+  </figure>
+  <div class="two">
+    <div class="prose">
+      <h3>When the answer is no</h3>
+      <ul class="plain">
+        <li>The new policy does not support the interface: <code>ExampleToken_PolicyNotSupported</code>.</li>
+        <li>Someone outside the list holds tokens: <code>ExamplePolicy_HoldersIncomplete(sum, supply)</code>.</li>
+        <li>The list repeats an address or is out of order: <code>ExamplePolicy_HoldersNotAscending(index)</code>.</li>
+        <li>Anyone but the token calls <code>onInstall</code>: <code>ExamplePolicy_OnlyToken</code>.</li>
+      </ul>
+      <p>In every case the installation reverts and the previous policy stays.</p>
+    </div>
+    <div class="prose">
+      <h3>Good to know</h3>
+      <ul class="plain">
+        <li>A token cannot install a policy from its constructor. Until the constructor returns, the token has no code, so <code>onInstall</code> could not read it. That is safe, because a token with no policy rejects every movement.</li>
+        <li>Every list entry costs a balance read, so the list has a size limit. For larger holder sets, the specification's Security Considerations describe a staged path: an interim policy that keeps new holders out while it counts over several transactions.</li>
+      </ul>
+    </div>
+  </div>
+  <p class="spec-link">In the specification: <a href="spec.html#installing-a-policy">Installing a policy</a> · <a href="spec.html#policy-requirements">policy requirements 15 and 16</a> · <a href="spec.html#which-policy-is-installed">Which policy is installed</a></p>
+</section>
+
+</div>

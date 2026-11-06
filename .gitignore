@@ -15,6 +15,9 @@
 # ERC assets, assembled from contracts/ by `npm run erc:assets` when submitting
 /erc/assets
 
+# The documentation site, built from site/ and the markdown files by `npm run site`
+/_site
+
 # Pinned tool binaries fetched by scripts/fetch-tool.sh (see tools.lock)
 /.tools
 

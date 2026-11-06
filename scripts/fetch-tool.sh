@@ -33,10 +33,12 @@ mkdir -p "$work/x" "$root/.tools/bin"
 case "$archive" in
   *.tar.xz) tar -xJf "$archive" -C "$work/x" ;;
   *.tar.gz) tar -xzf "$archive" -C "$work/x" ;;
+  *.zip) unzip -q "$archive" -d "$work/x" ;;
   *) echo "fetch-tool: unknown archive type $archive" >&2; exit 1 ;;
 esac
 case "$tool" in
   aderyn) install -m 0755 "$(find "$work/x" -type f -name aderyn | head -1)" "$root/.tools/bin/aderyn" ;;
+  pandoc) install -m 0755 "$(find "$work/x" -type f -name pandoc | head -1)" "$root/.tools/bin/pandoc" ;;
   foundry) for bin in forge cast anvil chisel; do install -m 0755 "$work/x/$bin" "$root/.tools/bin/$bin"; done ;;
   *) echo "fetch-tool: no install rule for $tool" >&2; exit 1 ;;
 esac

@@ -1,0 +1,140 @@
+<!-- SPDX-License-Identifier: MIT -->
+<div class="page">
+
+<header class="top">
+  <p class="eyebrow">Implementing</p>
+  <h1>Writing a token or a policy</h1>
+  <p class="lede">What a token and a policy have to get right to follow the specification, with the reason for each rule. Most items are requirements. Those marked <span class="lvl">should</span> are recommendations, and those marked <span class="lvl">advice</span> come from the Security Considerations. The reference contracts are one way to meet all of them. These checklists are a reading aid: the requirements themselves are in the specification, and they win wherever the two differ.</p>
+  <nav class="toc-inline" aria-label="On this page">
+    <a href="#token">A token</a>
+    <a href="#policy">A policy</a>
+    <a href="#example">The example policy</a>
+    <a href="#mistakes">Mistakes to avoid</a>
+    <a href="#testing">Testing</a>
+  </nav>
+</header>
+
+<section id="token">
+  <div class="prose">
+    <h2>A token</h2>
+    <p>A token implements one of the ERC-7943 interfaces and <code>IERC8473</code>, which adds <code>policy()</code>, the <code>PolicyChanged</code> event and the <code>ERC8473PolicyRejected</code> error. The reference token is <code>ExampleToken</code>, an ERC-20 built on OpenZeppelin Contracts 5.</p>
+  </div>
+  <div class="rules">
+    <div class="rule"><h3>Send every movement through the policy.</h3><p>Mints, burns, transfers and forced transfers all ask it first. The reference routes them through one internal function, <code>_move</code>, so no path can skip it. On OpenZeppelin, <code>_update</code> is the override that catches every balance change.</p></div>
+    <div class="rule"><h3>Pick the kind by authority, and the first match wins.</h3><p>Label an escrow return that a request directed as <span class="k k-transfer">TRANSFER</span>. Keep <span class="k k-forced">FORCED</span> for enforcement paths, and never use <span class="k k-executed">EXECUTED</span> or <span class="k k-forced">FORCED</span> for the base standard's transfer functions.</p></div>
+    <div class="rule"><h3>Ask before anything changes, and call nothing else in between.</h3><p>For <span class="k k-transfer">TRANSFER</span>, <span class="k k-mint">MINT</span> and <span class="k k-burn">BURN</span>, the operation must not change balances, ownership, total supply or frozen amounts before <code>checkTransfer</code>, except through earlier movements of the same operation. Between the check and the balance change, make no external call except to the policy, so nobody can change what the check saw.</p></div>
+    <div class="rule"><h3>Read the policy address once per movement.</h3><p>Use it for <code>checkTransfer</code>, <code>wantsAfterTransfer</code> and <code>afterTransfer</code>, so a replacement halfway through cannot split approval and notification across two policies.</p></div>
+    <div class="rule"><h3>Treat every failure as a rejection.</h3><p><code>STATICCALL</code> the checks. A revert, no code, fewer than 32 bytes, or any value but <code>TRANSFER_OK</code> rejects. <code>wantsAfterTransfer</code> must be exactly 0 or 1. With no policy installed, reject everything. Revert with <code>ERC8473PolicyRejected(reason)</code> when the policy rejects <span class="lvl">should</span>.</p></div>
+    <div class="rule"><h3>Keep your views working during a movement.</h3><p>Balances, ownership, total supply and frozen amounts must not revert while a movement or <code>onInstall</code> runs, because the policy reads them then.</p></div>
+    <div class="rule"><h3>Notify after the event, before the recipient.</h3><p>After the transfer event, call <code>wantsAfterTransfer</code> and, if it returns true, <code>afterTransfer</code> with the identical context. Do both before any ERC-721 or ERC-1155 receiver hook, and guard so no movement can start inside <code>afterTransfer</code>.</p></div>
+    <div class="rule"><h3>Build the pre-flight from the same code.</h3><p>Same kind, same token checks, and the same context with <code>operator</code> = <code>from</code>. Build <code>data</code> as the movement builds it: empty, or only values the token derives from its own state, never anything the caller supplied. Never revert, and copy at most one word of the policy's answer <span class="lvl">should</span>. The reference calls the policy at a low level in <code>_permits</code> to manage that. When both <code>from</code> and <code>to</code> are zero, return false.</p></div>
+    <div class="rule"><h3>Combine your own account conditions with the policy's.</h3><p>If the token adds account-level conditions of its own, such as a frozen wallet, <code>canSend</code> and <code>canReceive</code> return true only when both the policy and those conditions permit, and movements apply them to <code>from</code> and <code>to</code> in the same way.</p></div>
+    <div class="rule"><h3>Let the zero address pass the account checks.</h3><p><code>canSend(address(0))</code> and <code>canReceive(address(0))</code> return true without calling the policy. The account checks of a mint pre-flight then fall on the receiver alone and those of a burn on the sender alone, and <code>canTransfer</code> still performs both checks, as ERC-7943 requires.</p></div>
+    <div class="rule"><h3>Keep your own checks free of the caller.</h3><p>For <span class="k k-transfer">TRANSFER</span>, <span class="k k-mint">MINT</span> and <span class="k k-burn">BURN</span>, the pause, the frozen amount and any account conditions of your own may not read <code>msg.sender</code>, <code>operator</code>, <code>tx.origin</code> or the remaining gas, or the pre-flight would answer differently from the movement.</p></div>
+    <div class="rule"><h3>On a forced move, unfreeze at least the frozen part that moves.</h3><p>If frozen tokens move, first reduce the frozen amount by at least that part, and emit <code>Frozen</code> before <code>Transfer</code>. The reference reduces it by exactly that part.</p></div>
+    <div class="rule"><h3>If you offer <span class="k k-executed">EXECUTED</span>, the token verifies and restricts.</h3><p>Verify the holder's signature in the token, and restrict the function to accounts you granted the capability, independently of the instruction. Otherwise the movement is a <span class="k k-transfer">TRANSFER</span>. The instruction may also name which of them carries it out. The ERC leaves the instruction's design to you <span class="lvl">advice</span>: record each one as used so it cannot be repeated, sign every value the movement takes from it, enforce a deadline in the token, and offer a cancel to holders without code.</p></div>
+    <div class="rule"><h3>Tell an <span class="k k-executed">EXECUTED</span> pre-flight who executes.</h3><p>Take the executing account as an argument and build the context exactly as its execution would, including <code>operator</code> and <code>data</code>. Never answer yes when your own checks or the policy would reject.</p></div>
+    <div class="rule"><h3>Guard the installation.</h3><p>Check ERC-165 support for <code>0x9cb56a99</code> and emit <code>PolicyChanged</code>. Call <code>onInstall</code> once <code>policy()</code> returns the new policy, and revert if it reverts. No movement or other installation may begin while it runs. Never let the outgoing policy stop an installation. Never install from the constructor, or from an initializer a proxy's constructor runs: install from an initializer called after the proxy is deployed.</p></div>
+    <div class="rule"><h3>Advertise your own interfaces.</h3><p>Return true for <code>supportsInterface(0x0505c8c9)</code>, the <code>IERC8473</code> identifier, and for the identifier of the ERC-7943 interface you implement, such as <code>0x3edbb4c4</code> for the fungible one.</p></div>
+    <div class="rule"><h3>Process batches item by item.</h3><p>Check, move, emit and notify each item before the next, so caps stay exact. If any item is rejected, the whole batch reverts. An ERC-1155 token on OpenZeppelin overrides <code>_update</code> to apply one item at a time.</p></div>
+  </div>
+  <p class="spec-link">In the specification: <a href="spec.html#token-requirements">Token requirements</a>. The reference's <code>_update</code>, <code>_move</code> and <code>_permits</code> are quoted in <a href="spec.html#reference-implementation">Reference Implementation</a>, and the full source is <a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/example/ExampleToken.sol">ExampleToken.sol</a> and <a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/example/ExampleExecutorToken.sol">ExampleExecutorToken.sol</a>.</p>
+</section>
+
+<section id="policy">
+  <div class="prose">
+    <h2>A policy</h2>
+    <p>A policy implements <code>IERC8473Policy</code>: three checks (<code>checkSend</code>, <code>checkReceive</code>, <code>checkTransfer</code>), the callback pair (<code>wantsAfterTransfer</code>, <code>afterTransfer</code>), <code>onInstall</code>, and ERC-165. Most of the rules below keep the pre-flight honest and stop a stranger from touching state.</p>
+  </div>
+  <div class="rules">
+    <div class="rule"><h3>Decide by returning, never by reverting.</h3><p>The checks are views. Return <code>TRANSFER_OK</code> or a reason. A revert reads as a failure, not a decision.</p></div>
+    <div class="rule"><h3>Use the common reason names. <span class="lvl">should</span></h3><p>When you reject for one of the seven listed reasons, return <code>keccak256</code> of its name, so wallets can explain it. Name any other reason yourself, and document what you return.</p></div>
+    <div class="rule"><h3>Depend only on arguments, storage and the block.</h3><p>A check may use its arguments, persistent storage, and the block's timestamp, number and chain identifier. Never <code>msg.sender</code>, <code>tx.origin</code> or the remaining gas, so anyone simulating gets the token's answer. This is narrower than ERC-7943 allows, on purpose.</p></div>
+    <div class="rule"><h3>Keep the account checks about accounts.</h3><p><code>checkSend</code> and <code>checkReceive</code> may not hold balance checks or amount limits. Those belong in <code>checkTransfer</code>.</p></div>
+    <div class="rule"><h3>Never permit what the account checks reject.</h3><p>For every kind but <span class="k k-forced">FORCED</span>, <code>checkTransfer</code> must fail when <code>checkSend(from)</code> fails for a non-zero <code>from</code>, or <code>checkReceive(to)</code> for a non-zero <code>to</code>. That lets one check per movement cover ERC-7943's three. For <span class="k k-forced">FORCED</span>, still check the receiver unless the token documents a bypass <span class="lvl">should</span>.</p></div>
+    <div class="rule"><h3>Ignore <code>operator</code> for the predicted kinds.</h3><p><span class="k k-transfer">TRANSFER</span>, <span class="k k-mint">MINT</span> and <span class="k k-burn">BURN</span> decisions may not depend on who submits, or on state the operation changed before the check, such as a vault's assets during a deposit. For <span class="k k-executed">EXECUTED</span>, avoid state the operation changes, such as the record that an instruction was used, because a pre-flight cannot reproduce it.</p></div>
+    <div class="rule"><h3>Read the kind on every path that can permit.</h3><p>In Solidity, an out-of-range enum in a calldata struct reverts only when it is read. A path that permits without reading <code>kind</code> could permit a kind that does not exist.</p></div>
+    <div class="rule"><h3>Never turn a failed call into a permission.</h3><p>If a call to a rule or a registry reverts or runs out of gas, reject. Otherwise a caller could pick a gas limit that silences one rule.</p></div>
+    <div class="rule"><h3>Treat a check call as proof of nothing.</h3><p>Anyone can call the checks with any context. A permitting answer authorises nothing, and does not mean the caller is the token or that a movement happened.</p></div>
+    <div class="rule"><h3>Accept callbacks only from the token.</h3><p><code>afterTransfer</code> and <code>onInstall</code> revert unless <code>msg.sender</code> is the token named. A call from one token must not change state that governs another, unless the policy authenticates every token it serves.</p></div>
+    <div class="rule"><h3>Set movement-derived state again on every <code>onInstall</code>, or revert.</h3><p>No "already initialised" guard: a reinstall must not keep the old state. A policy without such state may do nothing else. Prefer state you can verify on-chain, such as a holder list checked against <code>totalSupply()</code>, over a number someone hands you <span class="lvl">advice</span>.</p></div>
+    <div class="rule"><h3>Be honest in <code>wantsAfterTransfer</code>, and keep rejections in <code>checkTransfer</code>.</h3><p>Return true whenever you rely on the callback. <code>canTransfer</code> never runs the callback, so a rule enforced in <code>afterTransfer</code> would break the pre-flight. Bound your gas <span class="lvl">should</span>: a check that runs out of gas rejects the movement.</p></div>
+    <div class="rule"><h3>Read <code>data</code> only for a token whose encoding you know. <span class="lvl">advice</span></h3><p>Nothing in the context names the encoding, and <code>abi.decode</code> ignores extra words, so a policy shared by tokens with different encodings can read one value as another without reverting. Fix the encoding per token.</p></div>
+    <div class="rule"><h3>Advertise the interface.</h3><p>Return true for <code>supportsInterface(0x9cb56a99)</code>, or no token will install you. Implement ERC-165 in full: a token that checks through OpenZeppelin's <code>ERC165Checker</code>, as the reference does, also needs true for <code>0x01ffc9a7</code> and false for <code>0xffffffff</code>.</p></div>
+  </div>
+  <p class="spec-link">In the specification: <a href="spec.html#policy-requirements">Policy requirements</a> · <a href="spec.html#decisions-and-reason-codes">Decisions and reason codes</a>. The reference policy is <a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/example/ExamplePolicy.sol">ExamplePolicy.sol</a>.</p>
+</section>
+
+<section id="example">
+  <div class="prose">
+    <h2>The example policy's rules</h2>
+    <p><code>ExamplePolicy</code> serves one token. It combines an allowlist, managed by its owner, with a holder cap. Its account checks are the allowlist: <code>checkSend</code> and <code>checkReceive</code> permit an allowlisted account, for that token only. <code>checkTransfer</code> applies them by kind:</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Kind</th><th>Sender allowlisted</th><th>Receiver allowlisted</th><th>Holder cap</th><th>Counted by <code>afterTransfer</code></th></tr></thead>
+      <tbody>
+        <tr><td><span class="k k-transfer">TRANSFER</span> <span class="k k-executed">EXECUTED</span></td><td>required</td><td>required</td><td>applies</td><td>yes</td></tr>
+        <tr><td><span class="k k-mint">MINT</span></td><td>no sender</td><td>required</td><td>applies</td><td>yes</td></tr>
+        <tr><td><span class="k k-burn">BURN</span></td><td>required</td><td>no receiver</td><td>never blocks</td><td>yes, a full burn leaves</td></tr>
+        <tr><td><span class="k k-forced">FORCED</span></td><td>not checked</td><td>required, unless a burn</td><td>exempt</td><td>yes</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="two">
+    <div class="prose">
+      <h3>The cap</h3>
+      <p>A move to someone who already holds is never capped. A zero amount and a transfer to yourself never count. A move that takes the sender's whole balance to a new holder leaves the count unchanged, so it passes while the count is at or below the cap. Any other new holder needs the count below the cap. Lowering the cap below the count admits no new holder until enough leave, while existing holders keep trading and can exit.</p>
+    </div>
+    <div class="prose">
+      <h3>The count</h3>
+      <p><code>afterTransfer</code> accepts calls only from the token, for that token. It ignores zero amounts and self-transfers. When the sender's balance reaches zero it subtracts one. When the receiver's balance after the move equals the amount just received, the receiver is new or was refilled, and it adds one. A forced transfer is counted like any other move, even though the cap did not apply to it.</p>
+    </div>
+  </div>
+</section>
+
+<section id="mistakes">
+  <div class="prose">
+    <h2>Mistakes to avoid</h2>
+    <p>The specification's Security Considerations go through these in detail. The short version:</p>
+    <ul class="plain">
+      <li><strong>Mislabelled kinds.</strong> A token that labels a holder-directed movement <span class="k k-forced">FORCED</span> skips every rule that exempts enforcement. The policy cannot tell, so the kind has to be right in the token.</li>
+      <li><strong>Trusting the caller of a check.</strong> Checks are public views. Never grant anything, or record anything, because a check was called.</li>
+      <li><strong>Treating a pre-flight as a promise.</strong> It is a snapshot of the state at the time of the call. The state can change before the transaction lands.</li>
+      <li><strong>Unbounded gas.</strong> A check that loops over a growing list will one day run out of gas and reject every movement.</li>
+      <li><strong>Sharing a policy across tokens with different <code>data</code> encodings.</strong> One token's value is read as another's, without a revert.</li>
+      <li><strong>Assuming which policy is installed.</strong> Read <code>policy()</code>, and watch <code>PolicyChanged</code>, before relying on a policy's rules.</li>
+    </ul>
+  </div>
+  <p class="spec-link">In the specification: <a href="spec.html#security-considerations">Security Considerations</a></p>
+</section>
+
+<section id="testing">
+  <div class="prose">
+    <h2>Testing</h2>
+    <p>The repository's tests are Solidity tests run by Hardhat 3, with forge-std's cheatcodes. Fuzz tests check that each pre-flight equals the outcome of the movement it predicts, over eligibility, pause, frozen amounts, caps and amounts. For <code>canTransfer</code> the comparison stays within the balance, because ERC-7943 leaves a shortfall to the base standard.</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>What it covers</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/test/ERC8473.t.sol"><code>contracts/test/ERC8473.t.sol</code></a></td><td>Conformance and integration: selectors and interface identifiers, the failure modes with faulty policies, and fuzzed pre-flight parity for transfers, spender transfers, mints and burns.</td></tr>
+        <tr><td><a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/test/ERC8473Executed.t.sol"><code>contracts/test/ERC8473Executed.t.sol</code></a></td><td>The same for <span class="k k-executed">EXECUTED</span> movements and <code>canExecute</code>.</td></tr>
+        <tr><td><a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/test/FaultyPolicies.sol"><code>contracts/test/FaultyPolicies.sol</code></a></td><td>Test policies: ones that forget to return a value, revert, burn all their gas, answer short, or answer a bad or short boolean; ones that re-enter the token from a callback, from <code>onInstall</code> or through the executor; one that reverts in <code>onInstall</code>; one that records installations; and a contract that echoes its calldata.</td></tr>
+        <tr><td><code>*.t.sol</code> beside each contract in <a href="https://github.com/fepvenancio/urwa-policy/tree/main/contracts/example"><code>contracts/example/</code></a></td><td>Unit tests for <code>ExampleToken</code>, <code>ExampleExecutorToken</code> and <code>ExamplePolicy</code>, including a token with no policy and a policy address with no code.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>To run them:</p>
+  </div>
+<pre><code>git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+npm ci --ignore-scripts
+npm test
+npm run test:isolated</code></pre>
+  <div class="prose">
+    <p>The first line is needed only without a GitHub SSH key: the lockfile records forge-std as a <code>git+ssh</code> dependency. <code>test:isolated</code> runs the same tests with a fresh EVM per call. The suites deploy the reference contracts in their <code>setUp</code>, so testing your own token or policy against them means changing what <code>setUp</code> deploys and adjusting the tests that pin the reference's own roles and errors.</p>
+  </div>
+</section>
+
+</div>
