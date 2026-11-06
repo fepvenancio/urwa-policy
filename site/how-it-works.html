@@ -110,7 +110,7 @@
   <div class="prose">
     <h2>Reason codes</h2>
     <p>A rejection carries a reason, so operators and wallets can tell why a movement failed. A policy should make each reason the <code>keccak256</code> of an upper-case name, and document the reasons it returns. The token should revert with <code>ERC8473PolicyRejected(reason)</code>, and the reference does.</p>
-    <p>Seven common reasons have names that every policy should use when it rejects for that reason, so a wallet can explain them without knowing which policy it is talking to. Any other reason gets a name of the policy's own. A value the wallet does not recognise is still a rejection: integrators must never treat it as permission.</p>
+    <p>Eight common reasons have names that every policy should use when it rejects for that reason, so a wallet can explain them without knowing which policy it is talking to. Any other reason gets a name of the policy's own. A value the wallet does not recognise is still a rejection: integrators must never treat it as permission.</p>
   </div>
   <div class="table-wrap">
     <table>
@@ -123,11 +123,12 @@
         <tr><td><code>WINDOW_CLOSED</code></td><td>the movement falls outside the hours or dates the policy allows</td></tr>
         <tr><td><code>KIND_NOT_ALLOWED</code></td><td>the policy does not allow this kind of movement, such as a <code>TRANSFER</code> when holders may move tokens only through an executor</td></tr>
         <tr><td><code>OPERATOR_NOT_ALLOWED</code></td><td>the movement is <code>EXECUTED</code> or <code>FORCED</code>, and the policy does not accept <code>operator</code> as the account carrying it out</td></tr>
+        <tr><td><code>CHECK_UNAVAILABLE</code></td><td>a call the policy makes in reaching the decision reverted or ran out of gas, so the policy could not decide</td></tr>
       </tbody>
     </table>
   </div>
   <div class="prose">
-    <p>The token's own checks never reach the policy, so they are not policy reasons. In the reference, a pause reverts with <code>EnforcedPause</code> and frozen tokens with <code>ERC7943InsufficientUnfrozenBalance</code>. The reference policy returns <code>SENDER_NOT_ELIGIBLE</code>, <code>RECEIVER_NOT_ELIGIBLE</code> and <code>MAX_HOLDERS</code> from the list, and <code>UNKNOWN_TOKEN</code>, a name of its own, when it is asked about a token it does not serve.</p>
+    <p>The token's own checks never reach the policy, so they are not policy reasons. In the reference, a pause reverts with <code>EnforcedPause</code> and frozen tokens with <code>ERC7943InsufficientUnfrozenBalance</code>. <code>CHECK_UNAVAILABLE</code> is for a check that could not finish, such as a call to an identity registry that failed. A policy must never permit in that case, and the name lets a wallet suggest trying again instead of telling a verified holder they are not eligible. It promises nothing about the next attempt, and it only covers failures the policy catches: a check that itself reverts returns no reason at all. The reference policy returns <code>SENDER_NOT_ELIGIBLE</code>, <code>RECEIVER_NOT_ELIGIBLE</code> and <code>MAX_HOLDERS</code> from the list, and <code>UNKNOWN_TOKEN</code>, a name of its own, when it is asked about a token it does not serve.</p>
   </div>
   <p class="spec-link">In the specification: <a href="spec.html#decisions-and-reason-codes">Decisions and reason codes</a> · <a href="spec.html#movements">token rule 3</a></p>
 </section>

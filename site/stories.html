@@ -175,6 +175,7 @@
           <tr><td><code>MAX_HOLDERS</code></td><td>The token has reached its limit on holders.</td></tr>
           <tr><td><code>WINDOW_CLOSED</code></td><td>Transfers are closed at the moment. Try again later.</td></tr>
           <tr><td><code>KIND_NOT_ALLOWED</code></td><td>This token can't be moved this way.</td></tr>
+          <tr><td><code>CHECK_UNAVAILABLE</code></td><td>The token's rules couldn't be checked just now. Try again shortly.</td></tr>
           <tr><td>anything else</td><td>The token's rules don't allow this transfer.</td></tr>
         </tbody>
       </table></div>
@@ -403,6 +404,7 @@
       <h3>When the answer is no</h3>
       <ul class="plain">
         <li>The window is closed: the policy's reason, <code>WINDOW_CLOSED</code> in <code>ExecutedRulesPolicy</code>.</li>
+        <li>A registry the policy relies on did not answer: <code>CHECK_UNAVAILABLE</code>. Nothing was recorded, so the executor can try again before the deadline.</li>
         <li>Expired, already used, the wrong executor or a bad signature: the executor token's own errors for the instruction, before the policy is asked.</li>
         <li>The pre-flight is <code>canExecute(instruction, signature, executor)</code>. It takes the executor as an argument and builds the context the execution would.</li>
       </ul>
