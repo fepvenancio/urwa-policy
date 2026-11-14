@@ -8,6 +8,10 @@
 # Hardhat coverage reports
 /coverage
 
+# Gas snapshots written by `npm run gas`
+/snapshots
+/.gas-snapshot
+
 # forge (fmt / Slither builds)
 /forge-out
 /forge-cache

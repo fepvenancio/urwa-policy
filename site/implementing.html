@@ -9,6 +9,7 @@
     <a href="#token">A token</a>
     <a href="#policy">A policy</a>
     <a href="#example">The example policy</a>
+    <a href="#cost">What it costs</a>
     <a href="#mistakes">Mistakes to avoid</a>
     <a href="#testing">Testing</a>
   </nav>
@@ -93,6 +94,30 @@
   </div>
 </section>
 
+<section id="cost">
+  <div class="prose">
+    <h2>What it costs</h2>
+    <p>The benchmark sends one ERC-20 transfer where both accounts must be on an allowlist, and reaches that rule in five ways. Each transfer is measured as a transaction in which every account and storage slot starts cold, so the figures are what a receipt shows, on the Osaka gas schedule. The tokens are measurement harnesses built on OpenZeppelin's ERC-20, not conforming tokens.</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>How the token reaches the rule</th><th>To a holder</th><th>To a new account</th><th>More than inline</th></tr></thead>
+      <tbody>
+        <tr><td>No check: a plain ERC-20</td><td>34,453</td><td>51,553</td><td>no rule</td></tr>
+        <tr><td>Inline: the token reads the list from its own storage</td><td>39,008</td><td>56,108</td><td>0</td></tr>
+        <tr><td>A <code>bool</code> compliance call in ERC-3643's shape, with <code>transferred</code> after</td><td>45,386</td><td>62,486</td><td>6,378</td></tr>
+        <tr><td>This ERC, with a policy that does not want the callback</td><td>47,229</td><td>64,329</td><td>8,221</td></tr>
+        <tr><td>This ERC, with a policy that wants the callback</td><td>48,465</td><td>65,565</td><td>9,457</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>More than half of each difference, about 4,700 gas, is reading the address of the contract that holds the rule and making the first call to it, which any external policy pays. For this ERC, passing the context instead of three arguments, the reentrancy guard and <code>wantsAfterTransfer</code> make up most of the rest. A real ERC-3643 token also calls its identity registry, a second contract, so its row is a lower bound. The callbacks do nothing, because a rule that keeps state writes the same storage in every design.</p>
+    <p>The table comes from <a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/test/GasComparison.t.sol"><code>contracts/test/GasComparison.t.sol</code></a>. To reproduce it, run <code>npm run gas</code>, which writes the values to <code>snapshots/erc8473-gas-comparison.json</code>.</p>
+  </div>
+  <p class="spec-link">In the specification: <a href="spec.html#what-a-check-costs">What a check costs</a></p>
+</section>
+
 <section id="mistakes">
   <div class="prose">
     <h2>Mistakes to avoid</h2>
@@ -121,6 +146,7 @@
         <tr><td><a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/test/ERC8473.t.sol"><code>contracts/test/ERC8473.t.sol</code></a></td><td>Conformance and integration: selectors and interface identifiers, the failure modes with faulty policies, and fuzzed pre-flight parity for transfers, spender transfers, mints and burns.</td></tr>
         <tr><td><a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/test/ERC8473Executed.t.sol"><code>contracts/test/ERC8473Executed.t.sol</code></a></td><td>The same for <span class="k k-executed">EXECUTED</span> movements and <code>canExecute</code>.</td></tr>
         <tr><td><a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/test/FaultyPolicies.sol"><code>contracts/test/FaultyPolicies.sol</code></a></td><td>Test policies: ones that forget to return a value, revert, burn all their gas, answer short, or answer a bad or short boolean; ones that re-enter the token from a callback, from <code>onInstall</code> or through the executor; one that reverts in <code>onInstall</code>; one that records installations; and a contract that echoes its calldata.</td></tr>
+        <tr><td><a href="https://github.com/fepvenancio/urwa-policy/blob/main/contracts/test/GasComparison.t.sol"><code>contracts/test/GasComparison.t.sol</code></a></td><td>The gas comparison in <a href="#cost">What it costs</a>, with its harnesses in <code>GasComparison.sol</code>. It also checks that every design applies the same rule and makes the calls it describes.</td></tr>
         <tr><td><code>*.t.sol</code> beside each contract in <a href="https://github.com/fepvenancio/urwa-policy/tree/main/contracts/example"><code>contracts/example/</code></a></td><td>Unit tests for <code>ExampleToken</code>, <code>ExampleExecutorToken</code> and <code>ExamplePolicy</code>, including a token with no policy and a policy address with no code.</td></tr>
       </tbody>
     </table>
