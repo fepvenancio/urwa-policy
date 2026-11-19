@@ -54,7 +54,7 @@
         <rect class="b2" x="415" y="276" width="260" height="24" rx="12"/><text x="427" y="292">6  balances change · Transfer event</text>
         <!-- 7 -->
         <line class="ln" x1="407" y1="322" x2="758" y2="322" marker-end="url(#m2)"/>
-        <text x="582" y="316" text-anchor="middle"><tspan class="mono">7  wantsAfterTransfer()</tspan><tspan class="m"> · STATICCALL</tspan></text>
+        <text x="582" y="316" text-anchor="middle"><tspan class="mono">7  wantsAfterTransfer(token)</tspan><tspan class="m"> · STATICCALL</tspan></text>
         <line class="ln dash" x1="760" y1="344" x2="409" y2="344" marker-end="url(#m2)"/>
         <text x="582" y="340" text-anchor="middle" class="m">true</text>
         <!-- 8 -->
@@ -75,7 +75,7 @@
     <li><div>It builds the context and reads the policy address once. It uses that address for every call in this movement, so a policy replaced halfway cannot split the approval and the notification.</div></li>
     <li><div>It calls <code>checkTransfer(ctx)</code> as a <code>STATICCALL</code>. Anything other than <code>TRANSFER_OK</code> reverts with <code>ERC8473PolicyRejected(reason)</code>. A revert, a policy with no code, or an answer shorter than 32 bytes reverts too.</div></li>
     <li><div>The balances change and the ERC-20 <code>Transfer</code> event is emitted. Nothing external happens between step 5 and this one.</div></li>
-    <li><div>It asks <code>wantsAfterTransfer()</code>. The answer must be exactly 0 or 1.</div></li>
+    <li><div>It asks <code>wantsAfterTransfer(token)</code>. The answer must be exactly 0 or 1.</div></li>
     <li><div>The answer is true, so it calls <code>afterTransfer</code> with the identical context. The policy updates its holder count: minus one if the sender's balance is now zero, plus one if the receiver is new.</div></li>
     <li><div>The guard is released and <code>transfer</code> returns <code>true</code>.</div></li>
   </ol>
@@ -173,6 +173,8 @@
           <tr><td><code>RECEIVER_NOT_ELIGIBLE</code></td><td>The receiver can't hold this token yet.</td></tr>
           <tr><td><code>LOCKED_UP</code></td><td>These tokens are still in a lock-up period.</td></tr>
           <tr><td><code>MAX_HOLDERS</code></td><td>The token has reached its limit on holders.</td></tr>
+          <tr><td><code>MAX_BALANCE</code></td><td>This would take the receiver over the most they may hold.</td></tr>
+          <tr><td><code>TRANSFER_LIMIT</code></td><td>This amount is over the limit on how much can move. Try a smaller amount or wait.</td></tr>
           <tr><td><code>WINDOW_CLOSED</code></td><td>Transfers are closed at the moment. Try again later.</td></tr>
           <tr><td><code>KIND_NOT_ALLOWED</code></td><td>This token can't be moved this way.</td></tr>
           <tr><td><code>CHECK_UNAVAILABLE</code></td><td>The token's rules couldn't be checked just now. Try again shortly.</td></tr>
@@ -184,7 +186,7 @@
       <h3>Good to know</h3>
       <ul class="plain">
         <li>The simulation is a wallet technique, not something the ERC requires. The ERC gives the error and the common names, which is what makes the technique work across tokens.</li>
-        <li>Any account may call a policy's checks with any context, so a wallet can also read <code>policy()</code> and call <code>checkTransfer</code> directly. That returns the policy's reason, but skips the token's own checks.</li>
+        <li>Any account may call a policy's checks with any context, so a wallet can also read <code>policy()</code> and call <code>checkTransfer</code> directly. That returns the policy's reason, but skips the token's own checks, and needs the token's <code>data</code> encoding if it passes any.</li>
         <li>An answer is a snapshot. The state can change between the check and the transaction, so the transaction can still fail.</li>
         <li><code>canTransfer</code> leaves a plain balance shortfall, allowances and roles to the base standard, so check those as for any ERC-20.</li>
       </ul>
@@ -226,7 +228,7 @@
         <text x="582" y="256" text-anchor="middle" class="m"><tspan class="acc">TRANSFER_OK</tspan> or a reason</text>
         <rect class="b2" x="415" y="276" width="270" height="24" rx="12"/><text x="427" y="292">6  balances change · Transfer(0, to, 500)</text>
         <line class="ln" x1="407" y1="322" x2="758" y2="322" marker-end="url(#m10)"/>
-        <text x="582" y="316" text-anchor="middle"><tspan class="mono">7  wantsAfterTransfer()</tspan><tspan class="m"> · STATICCALL</tspan></text>
+        <text x="582" y="316" text-anchor="middle"><tspan class="mono">7  wantsAfterTransfer(token)</tspan><tspan class="m"> · STATICCALL</tspan></text>
         <line class="ln dash" x1="760" y1="344" x2="409" y2="344" marker-end="url(#m10)"/>
         <text x="582" y="340" text-anchor="middle" class="m">true</text>
         <line class="ln" x1="407" y1="376" x2="758" y2="376" marker-end="url(#m10)"/>
@@ -244,7 +246,7 @@
     <li><div>The context has <code>from</code> = 0 and <code>operator</code> = the issuer. The policy may not use <code>operator</code> for a mint.</div></li>
     <li><div>The policy checks that the receiver is on the allowlist, and that a new holder fits under the cap. A receiver who already holds tokens is never capped.</div></li>
     <li><div>The balance changes and <code>Transfer(address(0), to, 500)</code> is emitted.</div></li>
-    <li><div>The token asks <code>wantsAfterTransfer()</code>. The example policy keeps a count, so it answers true.</div></li>
+    <li><div>The token asks <code>wantsAfterTransfer(token)</code>. The example policy keeps a count, so it answers true.</div></li>
     <li><div>In <code>afterTransfer</code>, the receiver's balance now equals the amount just received, so the policy counts a new holder.</div></li>
     <li><div>The mint returns.</div></li>
   </ol>
@@ -488,7 +490,7 @@
     <figcaption><b>The new policy initialises inside the installation, and the old one has no say.</b> If any step reverts, the whole call reverts and A stays installed. Because A is never asked, a broken or hostile policy cannot block its own replacement.</figcaption>
   </figure>
   <div class="prose">
-    <p>Only an account with <code>DEFAULT_ADMIN_ROLE</code> may call <code>setPolicy(policy, data)</code> on the reference token. Who may install is outside the ERC. In step 2 the token uses OpenZeppelin's <code>ERC165Checker</code>, which makes three calls: <code>0x01ffc9a7</code> must answer true, <code>0xffffffff</code> false, and then <code>0x9cb56a99</code> true. The token passes <code>data</code> to <code>onInstall</code> unchanged, and the policy decides what it means.</p>
+    <p>Only an account with <code>DEFAULT_ADMIN_ROLE</code> may call <code>setPolicy(policy, data)</code> on the reference token. Who may install is outside the ERC. In step 2 the token uses OpenZeppelin's <code>ERC165Checker</code>, which makes three calls: <code>0x01ffc9a7</code> must answer true, <code>0xffffffff</code> false, and then <code>0x7042dfcf</code> true. The token passes <code>data</code> to <code>onInstall</code> unchanged, and the policy decides what it means.</p>
     <p><code>ExamplePolicy</code> takes a list of addresses in strictly ascending order. It adds up their balances and counts the non-zero ones. If the sum equals <code>totalSupply()</code>, nobody outside the list holds tokens, so the count is exact at that moment, however old the list is. Accounts that hold nothing may be listed, so the list can name everyone who might hold by the time a timelocked installation runs.</p>
   </div>
   <figure>
@@ -519,7 +521,7 @@
         <li>The new policy does not support the interface: <code>ExampleToken_PolicyNotSupported</code>.</li>
         <li>Someone outside the list holds tokens: <code>ExamplePolicy_HoldersIncomplete(sum, supply)</code>.</li>
         <li>The list repeats an address or is out of order: <code>ExamplePolicy_HoldersNotAscending(index)</code>.</li>
-        <li>Anyone but the token calls <code>onInstall</code>: <code>ExamplePolicy_OnlyToken</code>.</li>
+        <li>Anyone but the token, or the policy the token has installed, calls <code>onInstall</code>: <code>ExamplePolicy_UnauthorizedCaller</code>.</li>
       </ul>
       <p>In every case the installation reverts and the previous policy stays.</p>
     </div>

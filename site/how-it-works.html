@@ -91,7 +91,7 @@
         <text x="650" y="284" text-anchor="middle" class="m mono sm">balanceOf · totalSupply</text>
       </svg>
     </div>
-    <figcaption><b>Three paths, one boundary.</b> The checks cross as <code>STATICCALL</code>, so the policy cannot change anything while it answers. Only <code>afterTransfer</code> and <code>onInstall</code> are state-changing calls, and the policy accepts them only from the token. The policy reads balances and the total supply back from the token.</figcaption>
+    <figcaption><b>Three paths, one boundary.</b> The checks cross as <code>STATICCALL</code>, so the policy cannot change anything while it answers. Only <code>afterTransfer</code> and <code>onInstall</code> are state-changing calls, and the policy accepts them only from the token or, when it is a module, from the policy the token installed. The policy reads balances and the total supply back from the token.</figcaption>
   </figure>
   <p class="spec-link">In the specification: <a href="spec.html#interfaces">Interfaces</a> · <a href="spec.html#a-policy-behind-erc-7943">A policy behind ERC-7943</a></p>
 </section>
@@ -110,7 +110,7 @@
   <div class="prose">
     <h2>Reason codes</h2>
     <p>A rejection carries a reason, so operators and wallets can tell why a movement failed. A policy should make each reason the <code>keccak256</code> of an upper-case name, and document the reasons it returns. The token should revert with <code>ERC8473PolicyRejected(reason)</code>, and the reference does.</p>
-    <p>Eight common reasons have names that every policy should use when it rejects for that reason, so a wallet can explain them without knowing which policy it is talking to. Any other reason gets a name of the policy's own. A value the wallet does not recognise is still a rejection: integrators must never treat it as permission.</p>
+    <p>Ten common reasons have names that every policy should use when it rejects for that reason, so a wallet can explain them without knowing which policy it is talking to. Any other reason gets a name of the policy's own. A value the wallet does not recognise is still a rejection: integrators must never treat it as permission.</p>
   </div>
   <div class="table-wrap">
     <table>
@@ -120,6 +120,8 @@
         <tr><td><code>RECEIVER_NOT_ELIGIBLE</code></td><td><code>to</code>, or the account <code>checkReceive</code> is asked about, may not receive, for the same kinds of reason</td></tr>
         <tr><td><code>LOCKED_UP</code></td><td>the tokens that would move are still in a lock-up or holding period</td></tr>
         <tr><td><code>MAX_HOLDERS</code></td><td>the movement would take the number of holders above a cap</td></tr>
+        <tr><td><code>MAX_BALANCE</code></td><td>the movement would take the balance of <code>to</code> above a cap</td></tr>
+        <tr><td><code>TRANSFER_LIMIT</code></td><td>the amount, alone or with earlier movements in a period, is above a limit on how much may move</td></tr>
         <tr><td><code>WINDOW_CLOSED</code></td><td>the movement falls outside the hours or dates the policy allows</td></tr>
         <tr><td><code>KIND_NOT_ALLOWED</code></td><td>the policy does not allow this kind of movement, such as a <code>TRANSFER</code> when holders may move tokens only through an executor</td></tr>
         <tr><td><code>OPERATOR_NOT_ALLOWED</code></td><td>the movement is <code>EXECUTED</code> or <code>FORCED</code>, and the policy does not accept <code>operator</code> as the account carrying it out</td></tr>
@@ -285,9 +287,9 @@
 <section id="callback">
   <div class="prose">
     <h2>The after-transfer callback</h2>
-    <p>A policy that keeps state, such as a holder count, needs to know when a movement completed. After the balances change and the transfer event is emitted, the token asks the same policy <code>wantsAfterTransfer()</code>. If it answers true, the token calls <code>afterTransfer</code> with the identical context it passed to <code>checkTransfer</code>. If the callback reverts, the movement reverts.</p>
+    <p>A policy that keeps state, such as a holder count, needs to know when a movement completed. After the balances change and the transfer event is emitted, the token asks the same policy <code>wantsAfterTransfer(token)</code>. The question names the token, so a policy that serves several tokens answers for each. If it answers true, the token calls <code>afterTransfer</code> with the identical context it passed to <code>checkTransfer</code>. If the callback reverts, the movement reverts.</p>
     <ul class="plain">
-      <li><strong>Authenticated.</strong> <code>afterTransfer</code> reverts unless the caller is the token named in the context, so nobody can feed the policy fake movements.</li>
+      <li><strong>Authenticated.</strong> <code>afterTransfer</code> reverts unless the caller is the token named in the context or, for a module, the policy that token installed, so nobody can feed the policy fake movements.</li>
       <li><strong>Strict answers.</strong> <code>wantsAfterTransfer</code> must return exactly 0 or 1. Any other word, or a short answer, reverts the movement, so a malformed reply cannot skip the callback.</li>
       <li><strong>No new movements.</strong> The token guards its movement path, so <code>afterTransfer</code> cannot start another movement. It may read the token's balances, which are already the new ones.</li>
       <li><strong>Before the recipient.</strong> The callback completes before any ERC-721 or ERC-1155 receiver hook runs.</li>
@@ -300,7 +302,7 @@
 <section id="install">
   <div class="prose">
     <h2>Installing a policy</h2>
-    <p>A token with no policy rejects every movement. On every installation (the first one, a policy coming back, and the policy that is already installed), the token checks that the new policy supports the interface, <code>0x9cb56a99</code>, through ERC-165, and emits <code>PolicyChanged</code>. Once <code>policy()</code> returns the new policy, it calls <code>onInstall(token, previousPolicy, data)</code> on it. The reference emits the event, then switches, then calls. If <code>onInstall</code> reverts, the installation reverts and the old policy stays.</p>
+    <p>A token with no policy rejects every movement, and once it has one it cannot go back to none. On every installation (the first one, a policy coming back, and the policy that is already installed), the token checks that the new policy supports the interface, <code>0x7042dfcf</code>, through ERC-165, and emits <code>PolicyChanged</code>. Once <code>policy()</code> returns the new policy, it calls <code>onInstall(token, previousPolicy, data)</code> on it. The reference emits the event, then switches, then calls. If <code>onInstall</code> reverts, the installation reverts and the old policy stays.</p>
     <p>A policy cannot tell on its own that it was swapped out and back. While another policy was installed it saw no movements, so any count it kept went stale. That is why <code>onInstall</code> must set every piece of state the policy derives from movements again, or revert. The outgoing policy is never asked, so a broken or hostile policy cannot block its own replacement. Story 6 shows the calls.</p>
   </div>
   <p class="spec-link">See it: <a href="stories.html#story-install">story 6, an issuer replaces the policy</a>. In the specification: <a href="spec.html#installing-a-policy">Installing a policy</a> · <a href="spec.html#installing-a-policy-1">why every installation</a></p>

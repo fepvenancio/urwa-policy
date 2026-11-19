@@ -7,7 +7,7 @@
   <p class="lede">An ERC-7943 token asks one external contract, its policy, whether each movement of its balances may happen. The policy answers with a <code>bytes32</code>: <code>TRANSFER_OK</code> permits, and anything else rejects with a reason. The same policy answers the token's ERC-7943 checks, so a wallet's pre-flight runs the same checks as the transfer it predicts.</p>
   <div class="facts">
     <span class="fact">permit = <b>keccak256("TRANSFER_OK")</b></span>
-    <span class="fact">policy interface <b>0x9cb56a99</b></span>
+    <span class="fact">policy interface <b>0x7042dfcf</b></span>
     <span class="fact">token interface <b>0x0505c8c9</b></span>
     <span class="fact"><b>5</b> kinds of movement</span>
     <span class="fact">status <b>Draft</b></span>
@@ -100,7 +100,7 @@
         <text x="650" y="284" text-anchor="middle" class="m mono sm">balanceOf · totalSupply</text>
       </svg>
     </div>
-    <figcaption><b>Three paths, one boundary.</b> The checks cross as <code>STATICCALL</code>, so the policy cannot change anything while it answers. Only <code>afterTransfer</code> and <code>onInstall</code> are state-changing calls, and the policy accepts them only from the token. The policy reads balances and the total supply back from the token.</figcaption>
+    <figcaption><b>Three paths, one boundary.</b> The checks cross as <code>STATICCALL</code>, so the policy cannot change anything while it answers. Only <code>afterTransfer</code> and <code>onInstall</code> are state-changing calls, and the policy accepts them only from the token or, when it is a module, from the policy the token installed. The policy reads balances and the total supply back from the token.</figcaption>
   </figure>
 </section>
 
